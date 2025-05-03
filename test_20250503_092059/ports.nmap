@@ -1,3 +1,0 @@
-# Nmap 7.95 scan initiated Sat May  3 09:28:37 2025 as: nmap -sS -sV -T4 --top-ports 1000 -iL test_20250503_092059/hosts.txt -oN test_20250503_092059/ports.nmap
-WARNING: No targets were specified, so 0 hosts scanned.
-# Nmap done at Sat May  3 09:28:37 2025 -- 0 IP addresses (0 hosts up) scanned in 0.05 seconds
