@@ -9,18 +9,18 @@ import (
 	"time"
 )
 
-// GetNmapProcessCmd devuelve el comando adecuado para monitorear procesos nmap según el SO
-func GetNmapProcessCmd() (string, []string) {
+// Devuelve el comando adecuado para monitorear procesos nmap según el SO
+func getNmapProcessCmd() (string, []string) {
 	// Usar ps aux para ambos sistemas
 	return "bash", []string{"-c", "ps aux | grep [n]map"}
 }
 
-// StartProcessMonitor inicia el monitoreo de procesos nmap
-func StartProcessMonitor(state *AppState) {
+// Inicia el monitoreo de procesos nmap
+func startProcessMonitor(state *AppState) {
 	go func() {
 		for {
-			cmd, args := GetNmapProcessCmd()
-			out, _ := Run(cmd, args...)
+			cmd, args := getNmapProcessCmd()
+			out, _ := run(cmd, args...)
 			state.app.QueueUpdateDraw(func() {
 				state.procPane.SetText(out)
 			})
@@ -29,8 +29,8 @@ func StartProcessMonitor(state *AppState) {
 	}()
 }
 
-// StartPortsFileMonitor inicia el monitoreo del archivo ports.nmap
-func StartPortsFileMonitor(state *AppState) {
+// Inicia el monitoreo del archivo ports.nmap
+func startPortsFileMonitor(state *AppState) {
 	go func() {
 		var lastContent string
 		for {
@@ -74,8 +74,8 @@ func StartPortsFileMonitor(state *AppState) {
 	}()
 }
 
-// SetupOutputRedirection configura la redirección de stdout y stderr al panel de logs
-func SetupOutputRedirection(state *AppState) {
+// Configura la redirección de stdout y stderr al panel de logs
+func setupOutputRedirection(state *AppState) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 	os.Stderr = w

@@ -19,8 +19,8 @@ type AppState struct {
 	selectedExtraCmds []string
 }
 
-// SetupUI configura la UI de la aplicación
-func SetupUI() *AppState {
+// Configura la UI de la aplicación
+func setupUI() *AppState {
 	state := &AppState{}
 
 	// Crear aplicación tview
@@ -62,10 +62,21 @@ func SetupUI() *AppState {
 		AddItem(state.logPane, 0, 1, false)
 	leftFlex.SetBackgroundColor(tcell.ColorDarkBlue)
 
-	state.flex = tview.NewFlex().
-		AddItem(leftFlex, 0, 1, false).
-		AddItem(state.tailPane, 0, 2, true)
-	state.flex.SetBackgroundColor(tcell.ColorDarkBlue)
+	// Título fijo arriba
+	title := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignLeft)
+	title.SetBackgroundColor(tcell.ColorDarkBlue)
+	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Subnet: [white]" + state.target)
+
+	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(title, 1, 0, false).
+		AddItem(
+			tview.NewFlex().
+				AddItem(leftFlex, 0, 1, false).
+				AddItem(state.tailPane, 0, 1, false),
+			0, 1, false)
+	mainFlex.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	state.flex = mainFlex
 
 	return state
 }
