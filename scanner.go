@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -23,29 +22,22 @@ func checkSudoPrivileges() bool {
 
 // Función para ejecutar comandos con privilegios elevados
 func runWithPrivileges(cmd string, args ...string) error {
-	var fullCmd *exec.Cmd
-
-	if runtime.GOOS == "darwin" { // macOS
-		fullCmd = exec.Command("sudo", cmd)
-	} else { // Linux
-		fullCmd = exec.Command("sudo", cmd)
-	}
-
-	fullCmd.Args = append(fullCmd.Args, args...)
+	// Construir el comando correctamente: sudo nmap ...
+	allArgs := append([]string{cmd}, args...)
+	fmt.Printf("[DEBUG] Running: sudo %s\n", strings.Join(allArgs, " "))
+	fullCmd := exec.Command("sudo", allArgs...)
 	fullCmd.Stdout = os.Stdout
 	fullCmd.Stderr = os.Stderr
 	fullCmd.Stdin = os.Stdin
-
 	return fullCmd.Run()
 }
 
 // Realiza la fase de descubrimiento de hosts
 func performHostDiscovery(state *AppState) {
-	fmt.Println("\033[1;34m[1] Host discovery\033[0m")
-	fmt.Println("\033[1;33mPlease enter your sudo password when prompted\033[0m")
+	fmt.Println("[1] Host discovery")
 	err := runWithPrivileges("nmap", "-sn", state.target, "-oG", state.scanDir+"/pingsweep.gnmap")
 	if err != nil {
-		fmt.Printf("\033[1;31mError during host discovery: %v\033[0m\n", err)
+		fmt.Printf("Error during host discovery: %v\n", err)
 		return
 	}
 
@@ -67,12 +59,11 @@ func performHostDiscovery(state *AppState) {
 
 // Realiza el escaneo de puertos
 func performPortScan(state *AppState) {
-	fmt.Println("\033[1;34m[2] Port scan (fast mode)\033[0m")
-	fmt.Println("\033[1;33mPlease enter your sudo password when prompted\033[0m")
+	fmt.Println("[2] Port scan (fast mode)")
 	err := runWithPrivileges("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
 		state.scanDir+"/hosts.txt", "-oN", state.scanDir+"/ports.nmap")
 	if err != nil {
-		fmt.Printf("\033[1;31mError during port scan: %v\033[0m\n", err)
+		fmt.Printf("Error during port scan: %v\n", err)
 		return
 	}
 }

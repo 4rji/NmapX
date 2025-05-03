@@ -9,9 +9,9 @@ import (
 )
 
 func main() {
-	// Comprobación de privilegios sudo antes de cualquier UI
+	// Privilege check before any UI
 	if !checkSudoPrivileges() {
-		fmt.Println("¡Necesitas privilegios sudo para ejecutar este programa!\nEjecuta el programa desde una terminal y asegúrate de tener permisos sudo.")
+		fmt.Println("You need sudo privileges to run this program!\nRun 'sudo -v' in your terminal to assign privileges, or 'sudo -k' to remove them.\nMake sure to run this program from a terminal where you can enter your sudo password.")
 		os.Exit(1)
 	}
 
