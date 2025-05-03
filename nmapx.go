@@ -9,6 +9,12 @@ import (
 )
 
 func main() {
+	// Comprobación de privilegios sudo antes de cualquier UI
+	if !checkSudoPrivileges() {
+		fmt.Println("¡Necesitas privilegios sudo para ejecutar este programa!\nEjecuta el programa desde una terminal y asegúrate de tener permisos sudo.")
+		os.Exit(1)
+	}
+
 	// Verificar argumentos
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: ./test_scan_report <CIDR>")
@@ -73,6 +79,7 @@ func main() {
 		// Guardar las selecciones en el estado
 		state.selectedNmapArgs = nmapArgs
 		state.selectedExtraCmds = extraCmds
+
 		// Iniciar monitores y escaneo
 		startProcessMonitor(state)
 		startPortsFileMonitor(state)

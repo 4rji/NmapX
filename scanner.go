@@ -6,14 +6,48 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
 
+// Verifica si el usuario puede ejecutar sudo sin contraseña
+func checkSudoPrivileges() bool {
+	cmd := exec.Command("sudo", "-n", "true")
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
+
+// Función para ejecutar comandos con privilegios elevados
+func runWithPrivileges(cmd string, args ...string) error {
+	var fullCmd *exec.Cmd
+
+	if runtime.GOOS == "darwin" { // macOS
+		fullCmd = exec.Command("sudo", cmd)
+	} else { // Linux
+		fullCmd = exec.Command("sudo", cmd)
+	}
+
+	fullCmd.Args = append(fullCmd.Args, args...)
+	fullCmd.Stdout = os.Stdout
+	fullCmd.Stderr = os.Stderr
+	fullCmd.Stdin = os.Stdin
+
+	return fullCmd.Run()
+}
+
 // Realiza la fase de descubrimiento de hosts
 func performHostDiscovery(state *AppState) {
 	fmt.Println("\033[1;34m[1] Host discovery\033[0m")
-	run("nmap", "-sn", state.target, "-oG", state.scanDir+"/pingsweep.gnmap")
+	fmt.Println("\033[1;33mPlease enter your sudo password when prompted\033[0m")
+	err := runWithPrivileges("nmap", "-sn", state.target, "-oG", state.scanDir+"/pingsweep.gnmap")
+	if err != nil {
+		fmt.Printf("\033[1;31mError during host discovery: %v\033[0m\n", err)
+		return
+	}
 
 	f, _ := os.Open(state.scanDir + "/pingsweep.gnmap")
 	defer f.Close()
@@ -34,12 +68,21 @@ func performHostDiscovery(state *AppState) {
 // Realiza el escaneo de puertos
 func performPortScan(state *AppState) {
 	fmt.Println("\033[1;34m[2] Port scan (fast mode)\033[0m")
-	run("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
+	fmt.Println("\033[1;33mPlease enter your sudo password when prompted\033[0m")
+	err := runWithPrivileges("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
 		state.scanDir+"/hosts.txt", "-oN", state.scanDir+"/ports.nmap")
+	if err != nil {
+		fmt.Printf("\033[1;31mError during port scan: %v\033[0m\n", err)
+		return
+	}
 }
 
 // Inicia el proceso de escaneo
 func startScan(state *AppState) {
+	if !checkSudoPrivileges() {
+		fmt.Println("\033[1;31m[!] Necesitas privilegios sudo para ejecutar este programa. Ejecuta el programa desde una terminal y asegúrate de tener permisos sudo.\033[0m")
+		return
+	}
 	go func() {
 		// Configurar directorios de salida
 		ts := time.Now().Format("20060102_150405")
