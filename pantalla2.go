@@ -10,6 +10,17 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -40,24 +51,13 @@ type ResponseBody struct {
 func main() {
 	app := tview.NewApplication()
 
-	// Configurar estilos globales
-	tview.Styles.PrimitiveBackgroundColor = tcell.ColorDarkBlue
-	tview.Styles.ContrastBackgroundColor = tcell.ColorDarkBlue
-	tview.Styles.MoreContrastBackgroundColor = tcell.ColorDarkBlue
-	tview.Styles.BorderColor = tcell.ColorGreen
-	tview.Styles.TitleColor = tcell.ColorGreen
-	tview.Styles.GraphicsColor = tcell.ColorLightCyan
-	tview.Styles.PrimaryTextColor = tcell.ColorWhite
-	tview.Styles.SecondaryTextColor = tcell.ColorLightGrey
-
 	// Navigation helper
 	helper := tview.NewTextView()
 	helper.SetTextAlign(tview.AlignCenter)
-	helper.SetText("◀ Use ←/→ to switch screens — press 'x' to send to explain ▶")
+	helper.SetText("◀ Use ←/→ to switch screens — press 'x' to execute nmap ▶")
 	helper.SetBorder(true)
 	helper.SetTitle("Navigation")
 	helper.SetTitleAlign(tview.AlignCenter)
-	helper.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Define options per screen
 	hostOpts := []struct{ label, flag, desc string }{
@@ -105,26 +105,21 @@ func main() {
 	// Command view (left pane top)
 	cmdView := tview.NewTextView().SetDynamicColors(true)
 	cmdView.SetBorder(true).SetTitle("Command").SetTitleAlign(tview.AlignLeft)
-	cmdView.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Selected options description (right pane top)
 	selDesc := tview.NewTextView().SetDynamicColors(true)
 	selDesc.SetBorder(true).SetTitle("Selected Options").SetTitleAlign(tview.AlignLeft)
-	selDesc.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Details pane: command output (right pane bottom)
 	detailView := tview.NewTextView().SetDynamicColors(true)
-	detailView.SetBorder(true).SetTitle("Explanation").SetTitleAlign(tview.AlignLeft)
-	detailView.SetBackgroundColor(tcell.ColorDarkBlue)
+	detailView.SetBorder(true).SetTitle("Details").SetTitleAlign(tview.AlignLeft)
 
 	// updateCmd rebuilds command and selected descriptions
 	updateCmd := func() {
 		cmd := []string{"nmap"}
 		addFlags := func(opts []struct{ label, flag, desc string }, sel []bool) {
 			for i, s := range sel {
-				if s {
-					cmd = append(cmd, opts[i].flag)
-				}
+				if s { cmd = append(cmd, opts[i].flag) }
 			}
 		}
 		addFlags(hostOpts, hostSel)
@@ -172,77 +167,79 @@ func main() {
 		AddPage("script", scriptList, true, false)
 
 	// Navigation order & focusable lists
-	order := []string{"disc", "scan", "port", "time", "evas", "script"}
-	lists := []*tview.List{hostList, scanList, portList, timeList, evasionList, scriptList}
+	order := []string{"disc","scan","port","time","evas","script"}
+	lists := []*tview.List{hostList,scanList,portList,timeList,evasionList,scriptList}
 	cur := 0
 
 	// Arrow navigation + execute on 'x'
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyRight {
-			if cur < len(order)-1 {
-				cur++
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
+	if ev.Key() == tcell.KeyRight {
+		if cur < len(order)-1 {
+			cur++
+			pages.SwitchToPage(order[cur])
+			app.SetFocus(lists[cur])
+		}
+	} else if ev.Key() == tcell.KeyLeft {
+		if cur > 0 {
+			cur--
+			pages.SwitchToPage(order[cur])
+			app.SetFocus(lists[cur])
+		}
+	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
+		// Explain via OpenAI API
+		apiKey := os.Getenv("OPENAI_API_KEY")
+		if apiKey == "" {
+			detailView.SetText("Error: OPENAI_API_KEY not set")
+		} else {
+			cmdStr := cmdView.GetText(true)
+			msgs := []Message{
+				{Role: "system", Content: "Explain briefly in a few words what this nmap command does."},
+				{Role: "user", Content: cmdStr},
 			}
-		} else if ev.Key() == tcell.KeyLeft {
-			if cur > 0 {
-				cur--
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
-			}
-		} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
-			// Explain assembled nmap command via OpenAI
-			apiKey := os.Getenv("OPENAI_API_KEY")
-			if apiKey == "" {
-				detailView.SetText("Error: OPENAI_API_KEY not set")
+			reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
+			data, _ := json.Marshal(reqBody)
+			req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				detailView.SetText(fmt.Sprintf("Request error: %v", err))
 			} else {
-				cmdStr := cmdView.GetText(true)
-				// Build chat messages
-				msgs := []Message{
-					{Role: "system", Content: "Explain briefly in a few words what this nmap command does."},
-					{Role: "user", Content: cmdStr},
-				}
-				reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
-				data, _ := json.Marshal(reqBody)
-				req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
-				req.Header.Set("Authorization", "Bearer "+apiKey)
-				req.Header.Set("Content-Type", "application/json")
-				resp, err := http.DefaultClient.Do(req)
-				if err != nil {
-					detailView.SetText(fmt.Sprintf("Request error: %v", err))
+				defer resp.Body.Close()
+				var rBody ResponseBody
+				json.NewDecoder(resp.Body).Decode(&rBody)
+				if len(rBody.Choices) > 0 {
+					detailView.SetText(rBody.Choices[0].Message.Content)
 				} else {
-					defer resp.Body.Close()
-					var rBody ResponseBody
-					json.NewDecoder(resp.Body).Decode(&rBody)
-					if len(rBody.Choices) > 0 {
-						detailView.SetText(rBody.Choices[0].Message.Content)
-					} else {
-						detailView.SetText("No explanation received.")
-					}
+					detailView.SetText("No explanation received.")
 				}
 			}
 		}
-		return ev
-	})
+	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'E' {
+		// Execute nmapx externally and exit
+		cmdStr := cmdView.GetText(true)
+		_ = exec.Command("nmapx", cmdStr).Start()
+		app.Stop()
+		os.Exit(0)
+	}
+	return ev
+})
 
 	// Left pane: helper, command, pages
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helper, 3, 0, false).
 		AddItem(cmdView, 3, 0, false).
 		AddItem(pages, 0, 1, true)
-	left.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Right pane: two halves
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(selDesc, 0, 1, false).
 		AddItem(detailView, 0, 1, false)
-	right.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Main layout: two columns equal width
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
-	mainFlex.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	if err := app.SetRoot(mainFlex, true).Run(); err != nil {
 		panic(err)
@@ -253,14 +250,12 @@ func main() {
 func buildList(title string, opts []struct{ label, flag, desc string }, sel []bool, update func()) *tview.List {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(title).SetTitleAlign(tview.AlignLeft)
-	for i, opt := range opts {
+	for i,opt := range opts {
 		idx := i
 		list.AddItem(fmt.Sprintf("(%d) %s", i+1, opt.label), opt.desc, rune('1'+i), func() {
 			sel[idx] = !sel[idx]
 			mark := opt.label
-			if sel[idx] {
-				mark = fmt.Sprintf("[*] %s", opt.label)
-			}
+			if sel[idx] { mark = fmt.Sprintf("[*] %s", opt.label) }
 			list.SetItemText(idx, fmt.Sprintf("(%d) %s", i+1, mark), opt.desc)
 			update()
 		})
