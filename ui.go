@@ -7,14 +7,16 @@ import (
 
 // Estructuras para mantener el estado de la aplicación
 type AppState struct {
-	app      *tview.Application
-	procPane *tview.TextView
-	tailPane *tview.TextView
-	logPane  *tview.TextView
-	flex     *tview.Flex
-	target   string
-	scanDir  string
-	htmlPath string
+	app               *tview.Application
+	procPane          *tview.TextView
+	tailPane          *tview.TextView
+	logPane           *tview.TextView
+	flex              *tview.Flex
+	target            string
+	scanDir           string
+	htmlPath          string
+	selectedNmapArgs  []string
+	selectedExtraCmds []string
 }
 
 // Configura la UI de la aplicación
@@ -60,10 +62,21 @@ func setupUI() *AppState {
 		AddItem(state.logPane, 0, 1, false)
 	leftFlex.SetBackgroundColor(tcell.ColorDarkBlue)
 
-	state.flex = tview.NewFlex().
-		AddItem(leftFlex, 0, 1, false).
-		AddItem(state.tailPane, 0, 1, false)
-	state.flex.SetBackgroundColor(tcell.ColorDarkBlue)
+	// Título fijo arriba
+	title := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignLeft)
+	title.SetBackgroundColor(tcell.ColorDarkBlue)
+	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Subnet: [white]" + state.target)
+
+	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(title, 1, 0, false).
+		AddItem(
+			tview.NewFlex().
+				AddItem(leftFlex, 0, 1, false).
+				AddItem(state.tailPane, 0, 1, false),
+			0, 1, false)
+	mainFlex.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	state.flex = mainFlex
 
 	return state
 }

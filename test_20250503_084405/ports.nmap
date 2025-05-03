@@ -1,0 +1,11 @@
+# Nmap 7.95 scan initiated Sat May  3 08:44:43 2025 as: nmap -sS -sV -T4 --top-ports 1000 -iL test_20250503_084405/hosts.txt -oN test_20250503_084405/ports.nmap
+Nmap scan report for 192.168.143.254
+Host is up (0.0070s latency).
+Not shown: 997 filtered tcp ports (no-response)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.4 (protocol 2.0)
+53/tcp open  domain  dnsmasq 2.89
+80/tcp open  http    nginx
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+# Nmap done at Sat May  3 08:44:55 2025 -- 1 IP address (1 host up) scanned in 11.36 seconds

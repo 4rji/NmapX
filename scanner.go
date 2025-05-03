@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ func performHostDiscovery(state *AppState) {
 // Realiza el escaneo de puertos
 func performPortScan(state *AppState) {
 	fmt.Println("\033[1;34m[2] Port scan (fast mode)\033[0m")
-	run("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL", 
+	run("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
 		state.scanDir+"/hosts.txt", "-oN", state.scanDir+"/ports.nmap")
 }
 
@@ -47,8 +48,9 @@ func startScan(state *AppState) {
 		state.htmlPath = state.scanDir + "/report.html"
 
 		// Obtener información de red
-		hostIP, _ := run("sh", "-c", `ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1`)
-		gateway, _ := run("sh", "-c", `ip route | awk '/default/ {print $3; exit}'`)
+		hostIP, _ := run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1`)
+		gateway, _ := run("sh", "-c", `netstat -rn | grep default | grep -v "link#" | awk '{print $2}' | head -n1`)
+		subnet, _ := run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1 | awk -F. '{print $1"."$2"."$3".0/24"}'`)
 
 		// Realizar escaneo
 		performHostDiscovery(state)
@@ -57,9 +59,17 @@ func startScan(state *AppState) {
 		// Generar reporte
 		hostsData, _ := ioutil.ReadFile(state.scanDir + "/hosts.txt")
 		portsData, _ := ioutil.ReadFile(state.scanDir + "/ports.nmap")
-		htmlContent := generateHTMLReport(state, hostIP, gateway, hostsData, portsData)
+		htmlContent := generateHTMLReport(state, hostIP, gateway, subnet, hostsData, portsData)
 		ioutil.WriteFile(state.htmlPath, []byte(htmlContent), 0644)
-		
+
+		// Iniciar servidor web
+		fs := http.FileServer(http.Dir(state.scanDir))
+		http.Handle("/", fs)
+		port := "8080"
+		webURL := fmt.Sprintf("http://localhost:%s", port)
+		fmt.Printf("\n\033[1;32m[+] Web server started at %s\033[0m\n", webURL)
+		go http.ListenAndServe(":"+port, nil)
+
 		// Mostrar popup con resultados
 		showCompletionPopup(state)
 	}()

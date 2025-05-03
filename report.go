@@ -38,7 +38,7 @@ func stylePortsOutput(portsData []byte) string {
 }
 
 // Genera el contenido HTML del reporte
-func generateHTMLReport(state *AppState, hostIP, gateway string, hostsData, portsData []byte) string {
+func generateHTMLReport(state *AppState, hostIP, gateway, subnet string, hostsData, portsData []byte) string {
 	escapedPorts := stylePortsOutput(portsData)
 
 	htmlContent := fmt.Sprintf(`<!DOCTYPE html>
@@ -73,12 +73,27 @@ pre{
 .filtered { color: #ffc107; font-weight: bold; }
 .proto { color: #0dcaf0; font-weight: bold; }
 .svc { color: #6610f2; font-weight: bold; }
+.web-link {
+  display: inline-block;
+  background: #0d6efd;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  text-decoration: none;
+  margin: 1rem 0;
+}
+.web-link:hover {
+  background: #0b5ed7;
+}
 </style>
 </head><body>
 
 <div class="banner">
   <h1>Network Scan Report (Test Mode)</h1>
   <small>Generated: %s</small>
+  <div style="margin-top: 1rem;">
+    <a href="http://localhost:8080" class="web-link" target="_blank">View Scan Files in Web Browser</a>
+  </div>
 </div>
 
 <div class="cards">
@@ -92,7 +107,7 @@ pre{
   <ul class="list">
 `, time.Now().Format("2006-01-02 15:04:05"),
 		html.EscapeString(getFirstLine(hostIP)),
-		html.EscapeString(state.target),
+		html.EscapeString(subnet),
 		html.EscapeString(getFirstLine(gateway)))
 
 	for _, line := range strings.Split(string(hostsData), "\n") {
