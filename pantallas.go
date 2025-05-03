@@ -5,11 +5,37 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// OpenAI API endpoint and types
+const apiURL = "https://api.openai.com/v1/chat/completions"
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type RequestBody struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+}
+
+type Choice struct {
+	Message Message `json:"message"`
+}
+
+type ResponseBody struct {
+	Choices []Choice `json:"choices"`
+}
 
 func main() {
 	app := tview.NewApplication()
@@ -136,16 +162,51 @@ func main() {
 
 	// Arrow navigation + execute on 'x'
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-	if ev.Key() == tcell.KeyRight {
-		if cur < len(order)-1 { cur++; pages.SwitchToPage(order[cur]); app.SetFocus(lists[cur]) }
-	} else if ev.Key() == tcell.KeyLeft {
-		if cur > 0 { cur--; pages.SwitchToPage(order[cur]); app.SetFocus(lists[cur]) }
-	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
-		// Show assembled nmap command in Details pane
-		cmdStr := cmdView.GetText(true)
-		detailView.SetText(cmdStr)
-	}
-	return ev
+		if ev.Key() == tcell.KeyRight {
+			if cur < len(order)-1 {
+				cur++
+				pages.SwitchToPage(order[cur])
+				app.SetFocus(lists[cur])
+			}
+		} else if ev.Key() == tcell.KeyLeft {
+			if cur > 0 {
+				cur--
+				pages.SwitchToPage(order[cur])
+				app.SetFocus(lists[cur])
+			}
+		} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
+			// Explain assembled nmap command via OpenAI
+			apiKey := os.Getenv("OPENAI_API_KEY")
+			if apiKey == "" {
+				detailView.SetText("Error: OPENAI_API_KEY not set")
+			} else {
+				cmdStr := cmdView.GetText(true)
+				// Build chat messages
+				msgs := []Message{
+					{Role: "system", Content: "Explain briefly in a few words what this nmap command does."},
+					{Role: "user", Content: cmdStr},
+				}
+				reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
+				data, _ := json.Marshal(reqBody)
+				req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
+				req.Header.Set("Authorization", "Bearer "+apiKey)
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					detailView.SetText(fmt.Sprintf("Request error: %v", err))
+				} else {
+					defer resp.Body.Close()
+					var rBody ResponseBody
+					json.NewDecoder(resp.Body).Decode(&rBody)
+					if len(rBody.Choices) > 0 {
+						detailView.SetText(rBody.Choices[0].Message.Content)
+					} else {
+						detailView.SetText("No explanation received.")
+					}
+				}
+			}
+		}
+		return ev
 	})
 
 	// Left pane: helper, command, pages
