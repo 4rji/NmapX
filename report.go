@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"html"
 	"io/ioutil"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,15 +17,15 @@ import (
 // Aplica estilos HTML al reporte de puertos
 func stylePortsOutput(portsData []byte) string {
 	escapedPorts := html.EscapeString(string(portsData))
-	
+
 	// Destacar protocolos (22/tcp, 53/udp, etc)
 	reProto := regexp.MustCompile(`(\d+)/(tcp|udp)`)
 	escapedPorts = reProto.ReplaceAllString(escapedPorts, `<span class="proto">$0</span>`)
-	
+
 	// Destacar servicios comunes
 	reSvc := regexp.MustCompile(`\b(ssh|http|domain|nginx|dnsmasq)\b`)
 	escapedPorts = reSvc.ReplaceAllString(escapedPorts, `<span class="svc">$1</span>`)
-	
+
 	// Destacar estados de puertos
 	reOpen := regexp.MustCompile(`\bopen\b`)
 	reClosed := regexp.MustCompile(`\bclosed\b`)
@@ -31,14 +33,14 @@ func stylePortsOutput(portsData []byte) string {
 	escapedPorts = reOpen.ReplaceAllString(escapedPorts, `<span class="open">open</span>`)
 	escapedPorts = reClosed.ReplaceAllString(escapedPorts, `<span class="closed">closed</span>`)
 	escapedPorts = reFiltered.ReplaceAllString(escapedPorts, `<span class="filtered">filtered</span>`)
-	
+
 	return escapedPorts
 }
 
 // Genera el contenido HTML del reporte
 func generateHTMLReport(state *AppState, hostIP, gateway string, hostsData, portsData []byte) string {
 	escapedPorts := stylePortsOutput(portsData)
-	
+
 	htmlContent := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -120,35 +122,64 @@ func showCompletionPopup(state *AppState) {
 		var logFiles []string
 		files, _ := ioutil.ReadDir(state.scanDir)
 		for _, f := range files {
-			if strings.HasSuffix(f.Name(), ".nmap") || 
-			   strings.HasSuffix(f.Name(), ".gnmap") || 
-			   f.Name() == "hosts.txt" {
+			if strings.HasSuffix(f.Name(), ".nmap") ||
+				strings.HasSuffix(f.Name(), ".gnmap") ||
+				f.Name() == "hosts.txt" {
 				logFiles = append(logFiles, state.scanDir+"/"+f.Name())
 			}
 		}
-		
+
 		list := tview.NewList().ShowSecondaryText(false)
 		list.AddItem("[Reporte HTML] "+state.htmlPath, "", 0, nil)
 		for _, r := range logFiles {
 			list.AddItem(r, "", 0, nil)
 		}
 		list.SetBorder(true).SetTitle("Archivos generados").SetBackgroundColor(tcell.ColorDarkBlue)
-		
+
+		// Copiar al portapapeles al seleccionar
+		list.SetSelectedFunc(func(ix int, mainText, secText string, shortcut rune) {
+			var path string
+			if ix == 0 {
+				// Primer item es el HTML
+				path = state.htmlPath
+			} else if ix-1 < len(logFiles) {
+				path = logFiles[ix-1]
+			}
+			if path != "" {
+				// Copiar al portapapeles según SO
+				if runtime.GOOS == "darwin" {
+					cmd := exec.Command("pbcopy")
+					in, _ := cmd.StdinPipe()
+					cmd.Start()
+					in.Write([]byte(path))
+					in.Close()
+					cmd.Wait()
+				} else if runtime.GOOS == "linux" {
+					cmd := exec.Command("xclip", "-selection", "clipboard")
+					in, _ := cmd.StdinPipe()
+					cmd.Start()
+					in.Write([]byte(path))
+					in.Close()
+					cmd.Wait()
+				}
+			}
+		})
+
 		okBtn := tview.NewButton("OK").SetSelectedFunc(func() {
 			state.app.SetRoot(state.flex, true)
 		})
 		okBtn.SetBackgroundColor(tcell.ColorGreen)
 		okBtn.SetLabelColor(tcell.ColorBlack)
-		
+
 		list.SetDoneFunc(func() {
 			state.app.SetRoot(state.flex, true)
 		})
-		
+
 		popup := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewTextView().SetText("[green]Reporte finalizado![white]\nSolo se muestran los archivos de este escaneo.\n").SetDynamicColors(true), 3, 0, false).
 			AddItem(list, 0, 1, true).
 			AddItem(okBtn, 3, 0, false)
-			
+
 		popup.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEsc {
 				state.app.SetRoot(state.flex, true)
@@ -156,7 +187,7 @@ func showCompletionPopup(state *AppState) {
 			}
 			return event
 		})
-		
+
 		state.app.SetRoot(popup, true)
 	})
 }

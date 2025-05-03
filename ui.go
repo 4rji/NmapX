@@ -7,23 +7,23 @@ import (
 
 // Estructuras para mantener el estado de la aplicación
 type AppState struct {
-	app          *tview.Application
-	procPane     *tview.TextView
-	tailPane     *tview.TextView
-	logPane      *tview.TextView
-	flex         *tview.Flex
-	target       string
-	scanDir      string
-	htmlPath     string
+	app      *tview.Application
+	procPane *tview.TextView
+	tailPane *tview.TextView
+	logPane  *tview.TextView
+	flex     *tview.Flex
+	target   string
+	scanDir  string
+	htmlPath string
 }
 
 // Configura la UI de la aplicación
 func setupUI() *AppState {
 	state := &AppState{}
-	
+
 	// Crear aplicación tview
 	state.app = tview.NewApplication()
-	
+
 	// Configurar estilos globales
 	tview.Styles.PrimitiveBackgroundColor = tcell.ColorDarkBlue
 	tview.Styles.ContrastBackgroundColor = tcell.ColorDarkBlue
@@ -57,13 +57,13 @@ func setupUI() *AppState {
 	// Crear layout
 	leftFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(state.procPane, 0, 1, false).
-		AddItem(state.tailPane, 0, 1, false)
+		AddItem(state.logPane, 0, 1, false)
 	leftFlex.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	state.flex = tview.NewFlex().
 		AddItem(leftFlex, 0, 1, false).
-		AddItem(state.logPane, 0, 2, true)
+		AddItem(state.tailPane, 0, 1, false)
 	state.flex.SetBackgroundColor(tcell.ColorDarkBlue)
-	
+
 	return state
 }

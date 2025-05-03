@@ -9,13 +9,20 @@ import (
 	"time"
 )
 
+// Devuelve el comando adecuado para monitorear procesos nmap según el SO
+func getNmapProcessCmd() (string, []string) {
+	// Usar ps aux para ambos sistemas
+	return "bash", []string{"-c", "ps aux | grep [n]map"}
+}
+
 // Inicia el monitoreo de procesos nmap
 func startProcessMonitor(state *AppState) {
 	go func() {
 		for {
-			out, _ := run("bash", "-c", "top -b -n 1 | grep nmap")
-			state.app.QueueUpdateDraw(func() { 
-				state.procPane.SetText(out) 
+			cmd, args := getNmapProcessCmd()
+			out, _ := run(cmd, args...)
+			state.app.QueueUpdateDraw(func() {
+				state.procPane.SetText(out)
 			})
 			time.Sleep(time.Second)
 		}
@@ -41,7 +48,7 @@ func startPortsFileMonitor(state *AppState) {
 					}
 				}
 			}
-			
+
 			if newest != "" {
 				data, err := ioutil.ReadFile(newest)
 				if err == nil {
@@ -52,14 +59,14 @@ func startPortsFileMonitor(state *AppState) {
 					content := strings.Join(lines, "\n")
 					if content != lastContent {
 						lastContent = content
-						state.app.QueueUpdateDraw(func() { 
-							state.tailPane.SetText(content) 
+						state.app.QueueUpdateDraw(func() {
+							state.tailPane.SetText(content)
 						})
 					}
 				}
 			} else {
-				state.app.QueueUpdateDraw(func() { 
-					state.tailPane.SetText("") 
+				state.app.QueueUpdateDraw(func() {
+					state.tailPane.SetText("")
 				})
 			}
 			time.Sleep(2 * time.Second)
