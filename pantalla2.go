@@ -1,7 +1,3 @@
-// Package main implements a six-screen interactive TUI for building and executing an nmap command.
-// Navigate with ←/→ arrows; selections persist and update the command and selected descriptions.
-// Press 'x' to execute the assembled nmap command and view output in the Details pane.
-
 package main
 
 import (
@@ -12,24 +8,16 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-)
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-	"strings"
+	"syscall"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// OpenAI API endpoint and types
+// OpenAI endpoint
 const apiURL = "https://api.openai.com/v1/chat/completions"
 
+// Chat API payload types
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -49,216 +37,188 @@ type ResponseBody struct {
 }
 
 func main() {
+	var runAfter bool // execute after TUI
+	var finalCmd string
+
 	app := tview.NewApplication()
 
 	// Navigation helper
 	helper := tview.NewTextView()
 	helper.SetTextAlign(tview.AlignCenter)
-	helper.SetText("◀ Use ←/→ to switch screens — press 'x' to execute nmap ▶")
+	helper.SetText("◀ ←/→ navigate | 'x' explain | 'E' run & exit ▶")
 	helper.SetBorder(true)
 	helper.SetTitle("Navigation")
 	helper.SetTitleAlign(tview.AlignCenter)
 
-	// Define options per screen
+	// Options (sample two screens)
 	hostOpts := []struct{ label, flag, desc string }{
-		{"None", "-Pn", "Skip host discovery; treat all targets as online."},
-		{"ICMP echo", "-PE", "Send ICMP echo request to discover hosts."},
-		{"ICMP timestamp", "-PP", "Send ICMP timestamp request for host discovery."},
-		{"ICMP netmask", "-PM", "Send ICMP netmask request to detect hosts."},
+		{"None", "-Pn", "Skip host discovery"},
+		{"ICMP echo", "-PE", "Send ICMP echo"},
 	}
 	scanOpts := []struct{ label, flag, desc string }{
-		{"SYN Scan", "-sS", "Stealth SYN scan."},
-		{"TCP Connect", "-sT", "Full TCP connect scan."},
-		{"UDP Scan", "-sU", "UDP scan."},
-	}
-	portOpts := []struct{ label, flag, desc string }{
-		{"All ports", "-p-", "Scan all ports 1–65535."},
-		{"Top 100", "--top-ports 100", "Scan the 100 most common ports."},
-		{"Fast scan", "-F", "Fast scan using fewer ports."},
-	}
-	timeOpts := []struct{ label, flag, desc string }{
-		{"Paranoid", "-T0", "Very slow, stealth."},
-		{"Sneaky", "-T1", "Slow to evade IDS."},
-		{"Normal", "-T3", "Default speed."},
-		{"Aggressive", "-T4", "Faster, noisier."},
-	}
-	evasionOpts := []struct{ label, flag, desc string }{
-		{"Fragment", "-f", "Split packets into fragments."},
-		{"Decoys", "-D RND:10", "Use random decoy IPs."},
-		{"Spoof IP", "-S 1.2.3.4", "Set fake source IP."},
-		{"Bad checksum", "--badsum", "Send invalid checksums."},
-	}
-	scriptOpts := []struct{ label, flag, desc string }{
-		{"firewalk", "--script=firewalk", "Trace firewall rules."},
-		{"http-methods", "--script=http-methods", "Check allowed HTTP methods."},
-		{"dns-brute", "--script=dns-brute", "Brute force DNS names."},
+		{"SYN", "-sS", "Stealth SYN scan"},
+		{"Connect", "-sT", "TCP connect scan"},
 	}
 
-	// Selection state
 	hostSel := make([]bool, len(hostOpts))
 	scanSel := make([]bool, len(scanOpts))
-	portSel := make([]bool, len(portOpts))
-	timeSel := make([]bool, len(timeOpts))
-	evasionSel := make([]bool, len(evasionOpts))
-	scriptSel := make([]bool, len(scriptOpts))
 
-	// Command view (left pane top)
+	// Views
 	cmdView := tview.NewTextView().SetDynamicColors(true)
-	cmdView.SetBorder(true).SetTitle("Command").SetTitleAlign(tview.AlignLeft)
+	cmdView.SetBorder(true).SetTitle("Command")
 
-	// Selected options description (right pane top)
 	selDesc := tview.NewTextView().SetDynamicColors(true)
-	selDesc.SetBorder(true).SetTitle("Selected Options").SetTitleAlign(tview.AlignLeft)
+	selDesc.SetBorder(true).SetTitle("Selected")
 
-	// Details pane: command output (right pane bottom)
-	detailView := tview.NewTextView().SetDynamicColors(true)
-	detailView.SetBorder(true).SetTitle("Details").SetTitleAlign(tview.AlignLeft)
+	detail := tview.NewTextView().SetDynamicColors(true)
+	detail.SetBorder(true).SetTitle("Details")
 
-	// updateCmd rebuilds command and selected descriptions
-	updateCmd := func() {
-		cmd := []string{"nmap"}
-		addFlags := func(opts []struct{ label, flag, desc string }, sel []bool) {
-			for i, s := range sel {
-				if s { cmd = append(cmd, opts[i].flag) }
+	// Update function
+	update := func() {
+		parts := []string{"nmap"}
+		for i, s := range hostSel {
+			if s {
+				parts = append(parts, hostOpts[i].flag)
 			}
 		}
-		addFlags(hostOpts, hostSel)
-		addFlags(scanOpts, scanSel)
-		addFlags(portOpts, portSel)
-		addFlags(timeOpts, timeSel)
-		addFlags(evasionOpts, evasionSel)
-		addFlags(scriptOpts, scriptSel)
-		cmdView.SetText(strings.Join(cmd, " "))
+		for i, s := range scanSel {
+			if s {
+				parts = append(parts, scanOpts[i].flag)
+			}
+		}
+		cmd := strings.Join(parts, " ")
+		cmdView.SetText(cmd)
 
-		// descriptions
 		var b strings.Builder
-		addDescs := func(opts []struct{ label, flag, desc string }, sel []bool) {
-			for i, s := range sel {
-				if s {
-					b.WriteString(fmt.Sprintf("%s %s: %s\n", opts[i].flag, opts[i].label, opts[i].desc))
-				}
+		for i, s := range hostSel {
+			if s {
+				fmt.Fprintf(&b, "%s (%s)\n", hostOpts[i].label, hostOpts[i].flag)
 			}
 		}
-		addDescs(hostOpts, hostSel)
-		addDescs(scanOpts, scanSel)
-		addDescs(portOpts, portSel)
-		addDescs(timeOpts, timeSel)
-		addDescs(evasionOpts, evasionSel)
-		addDescs(scriptOpts, scriptSel)
+		for i, s := range scanSel {
+			if s {
+				fmt.Fprintf(&b, "%s (%s)\n", scanOpts[i].label, scanOpts[i].flag)
+			}
+		}
 		selDesc.SetText(b.String())
 	}
-	updateCmd()
+	update()
 
-	// Build lists for screens
-	hostList := buildList("📡 Host Discovery", hostOpts, hostSel, updateCmd)
-	scanList := buildList("🔍 Scan Type", scanOpts, scanSel, updateCmd)
-	portList := buildList("📦 Port Selection", portOpts, portSel, updateCmd)
-	timeList := buildList("⏱ Timing", timeOpts, timeSel, updateCmd)
-	evasionList := buildList("🛡 Evasion", evasionOpts, evasionSel, updateCmd)
-	scriptList := buildList("💻 NSE Scripts", scriptOpts, scriptSel, updateCmd)
+	// Build lists
+	hostList := makeList("📡 Host", hostOpts, hostSel, update)
+	scanList := makeList("🔍 Scan", scanOpts, scanSel, update)
 
-	// Pages with lists (left pane middle)
+	// Pages
 	pages := tview.NewPages().
-		AddPage("disc", hostList, true, true).
-		AddPage("scan", scanList, true, false).
-		AddPage("port", portList, true, false).
-		AddPage("time", timeList, true, false).
-		AddPage("evas", evasionList, true, false).
-		AddPage("script", scriptList, true, false)
+		AddPage("host", hostList, true, true).
+		AddPage("scan", scanList, true, false)
 
-	// Navigation order & focusable lists
-	order := []string{"disc","scan","port","time","evas","script"}
-	lists := []*tview.List{hostList,scanList,portList,timeList,evasionList,scriptList}
+	order := []string{"host", "scan"}
+	lists := []*tview.List{hostList, scanList}
 	cur := 0
 
-	// Arrow navigation + execute on 'x'
+	// Input capture
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-	if ev.Key() == tcell.KeyRight {
-		if cur < len(order)-1 {
+		switch {
+		case ev.Key() == tcell.KeyRight && cur < len(order)-1:
 			cur++
 			pages.SwitchToPage(order[cur])
 			app.SetFocus(lists[cur])
-		}
-	} else if ev.Key() == tcell.KeyLeft {
-		if cur > 0 {
+		case ev.Key() == tcell.KeyLeft && cur > 0:
 			cur--
 			pages.SwitchToPage(order[cur])
 			app.SetFocus(lists[cur])
-		}
-	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
-		// Explain via OpenAI API
-		apiKey := os.Getenv("OPENAI_API_KEY")
-		if apiKey == "" {
-			detailView.SetText("Error: OPENAI_API_KEY not set")
-		} else {
-			cmdStr := cmdView.GetText(true)
-			msgs := []Message{
-				{Role: "system", Content: "Explain briefly in a few words what this nmap command does."},
-				{Role: "user", Content: cmdStr},
-			}
-			reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
-			data, _ := json.Marshal(reqBody)
-			req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				detailView.SetText(fmt.Sprintf("Request error: %v", err))
-			} else {
-				defer resp.Body.Close()
-				var rBody ResponseBody
-				json.NewDecoder(resp.Body).Decode(&rBody)
-				if len(rBody.Choices) > 0 {
-					detailView.SetText(rBody.Choices[0].Message.Content)
-				} else {
-					detailView.SetText("No explanation received.")
+		case ev.Key() == tcell.KeyRune && ev.Rune() == 'x':
+			explain(cmdView, detail)
+		case ev.Key() == tcell.KeyRune && ev.Rune() == 'E':
+			finalCmd := cmdView.GetText(true)
+			app.Stop()
+			// Ejecutar el comando en la terminal real
+			args := strings.Fields(finalCmd)
+			if len(args) > 0 {
+				// Reemplaza el proceso actual por el comando generado
+				err := syscall.Exec("/usr/bin/env", append([]string{"env"}, args...), os.Environ())
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "Error al ejecutar el comando:", err)
+					os.Exit(1)
 				}
 			}
 		}
-	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'E' {
-		// Execute nmapx externally and exit
-		cmdStr := cmdView.GetText(true)
-		_ = exec.Command("nmapx", cmdStr).Start()
-		app.Stop()
-		os.Exit(0)
-	}
-	return ev
-})
+		return ev
+	})
 
-	// Left pane: helper, command, pages
+	// Layout
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helper, 3, 0, false).
 		AddItem(cmdView, 3, 0, false).
 		AddItem(pages, 0, 1, true)
 
-	// Right pane: two halves
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(selDesc, 0, 1, false).
-		AddItem(detailView, 0, 1, false)
+		AddItem(detail, 0, 1, false)
 
-	// Main layout: two columns equal width
-	mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+	main := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
 
-	if err := app.SetRoot(mainFlex, true).Run(); err != nil {
+	if err := app.SetRoot(main, true).Run(); err != nil {
 		panic(err)
+	}
+
+	// After TUI exit, run external command if flagged
+	if runAfter {
+		shellCmd := fmt.Sprintf("nmapx '%s'", finalCmd)
+		exec.Command("sh", "-c", shellCmd).Run()
 	}
 }
 
-// buildList constructs a toggleable list
-func buildList(title string, opts []struct{ label, flag, desc string }, sel []bool, update func()) *tview.List {
-	list := tview.NewList().ShowSecondaryText(true)
-	list.SetBorder(true).SetTitle(title).SetTitleAlign(tview.AlignLeft)
-	for i,opt := range opts {
+// makeList builds a selectable list
+func makeList(title string, opts []struct{ label, flag, desc string }, sel []bool, upd func()) *tview.List {
+	l := tview.NewList().ShowSecondaryText(true)
+	l.SetBorder(true).SetTitle(title)
+	for i, o := range opts {
 		idx := i
-		list.AddItem(fmt.Sprintf("(%d) %s", i+1, opt.label), opt.desc, rune('1'+i), func() {
+		l.AddItem(fmt.Sprintf("(%d) %s", i+1, o.label), o.desc, rune('1'+i), func() {
 			sel[idx] = !sel[idx]
-			mark := opt.label
-			if sel[idx] { mark = fmt.Sprintf("[*] %s", opt.label) }
-			list.SetItemText(idx, fmt.Sprintf("(%d) %s", i+1, mark), opt.desc)
-			update()
+			mark := o.label
+			if sel[idx] {
+				mark = "[*] " + o.label
+			}
+			l.SetItemText(idx, fmt.Sprintf("(%d) %s", i+1, mark), o.desc)
+			upd()
 		})
 	}
-	return list
+	return l
+}
+
+// explain sends the command to OpenAI and writes the reply into detail pane
+func explain(cmdView *tview.TextView, detail *tview.TextView) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		detail.SetText("OPENAI_API_KEY not set")
+		return
+	}
+	cmd := cmdView.GetText(true)
+	msgs := []Message{
+		{Role: "system", Content: "Explain briefly what this nmap command does."},
+		{Role: "user", Content: cmd},
+	}
+	body := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
+	data, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		detail.SetText(err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	var rb ResponseBody
+	json.NewDecoder(resp.Body).Decode(&rb)
+	if len(rb.Choices) > 0 {
+		detail.SetText(rb.Choices[0].Message.Content)
+	} else {
+		detail.SetText("No explanation")
+	}
 }
