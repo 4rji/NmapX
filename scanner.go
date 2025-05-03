@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// Realiza la fase de descubrimiento de hosts
-func performHostDiscovery(state *AppState) {
+// PerformHostDiscovery realiza la fase de descubrimiento de hosts
+func PerformHostDiscovery(state *AppState) {
 	fmt.Println("\033[1;34m[1] Host discovery\033[0m")
-	run("nmap", "-sn", state.target, "-oG", state.scanDir+"/pingsweep.gnmap")
+	Run("nmap", "-sn", state.target, "-oG", state.scanDir+"/pingsweep.gnmap")
 
 	f, _ := os.Open(state.scanDir + "/pingsweep.gnmap")
 	defer f.Close()
@@ -31,15 +31,15 @@ func performHostDiscovery(state *AppState) {
 	}
 }
 
-// Realiza el escaneo de puertos
-func performPortScan(state *AppState) {
+// PerformPortScan realiza el escaneo de puertos
+func PerformPortScan(state *AppState) {
 	fmt.Println("\033[1;34m[2] Port scan (fast mode)\033[0m")
-	run("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
+	Run("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
 		state.scanDir+"/hosts.txt", "-oN", state.scanDir+"/ports.nmap")
 }
 
-// Inicia el proceso de escaneo
-func startScan(state *AppState) {
+// StartScan inicia el proceso de escaneo
+func StartScan(state *AppState) {
 	go func() {
 		// Configurar directorios de salida
 		ts := time.Now().Format("20060102_150405")
@@ -48,18 +48,18 @@ func startScan(state *AppState) {
 		state.htmlPath = state.scanDir + "/report.html"
 
 		// Obtener información de red
-		hostIP, _ := run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1`)
-		gateway, _ := run("sh", "-c", `netstat -rn | grep default | grep -v "link#" | awk '{print $2}' | head -n1`)
-		subnet, _ := run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1 | awk -F. '{print $1"."$2"."$3".0/24"}'`)
+		hostIP, _ := Run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1`)
+		gateway, _ := Run("sh", "-c", `netstat -rn | grep default | grep -v "link#" | awk '{print $2}' | head -n1`)
+		subnet, _ := Run("sh", "-c", `ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n1 | awk -F. '{print $1"."$2"."$3".0/24"}'`)
 
 		// Realizar escaneo
-		performHostDiscovery(state)
-		performPortScan(state)
+		PerformHostDiscovery(state)
+		PerformPortScan(state)
 
 		// Generar reporte
 		hostsData, _ := ioutil.ReadFile(state.scanDir + "/hosts.txt")
 		portsData, _ := ioutil.ReadFile(state.scanDir + "/ports.nmap")
-		htmlContent := generateHTMLReport(state, hostIP, gateway, subnet, hostsData, portsData)
+		htmlContent := GenerateHTMLReport(state, hostIP, gateway, subnet, hostsData, portsData)
 		ioutil.WriteFile(state.htmlPath, []byte(htmlContent), 0644)
 
 		// Iniciar servidor web
@@ -71,6 +71,6 @@ func startScan(state *AppState) {
 		go http.ListenAndServe(":"+port, nil)
 
 		// Mostrar popup con resultados
-		showCompletionPopup(state)
+		ShowCompletionPopup(state)
 	}()
 }

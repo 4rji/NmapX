@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -16,7 +17,7 @@ func main() {
 	}
 
 	// Configurar la aplicación
-	state := setupUI()
+	state := SetupUI()
 	state.target = os.Args[1]
 
 	// Menú de selección de opciones de escaneo
@@ -74,10 +75,17 @@ func main() {
 		state.selectedNmapArgs = nmapArgs
 		state.selectedExtraCmds = extraCmds
 		// Iniciar monitores y escaneo
-		startProcessMonitor(state)
-		startPortsFileMonitor(state)
-		setupOutputRedirection(state)
-		startScan(state)
+		StartProcessMonitor(state)
+		StartPortsFileMonitor(state)
+		SetupOutputRedirection(state)
+
+		// Usar la función de escaneo apropiada según el sistema operativo
+		if runtime.GOOS == "linux" {
+			StartScanLinux(state)
+		} else {
+			StartScan(state)
+		}
+
 		state.app.SetRoot(state.flex, true)
 	})
 	form.SetBorder(true).SetTitle("Customize your scan (space to select)").SetTitleColor(tcell.ColorGreen)

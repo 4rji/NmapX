@@ -14,8 +14,8 @@ import (
 	"github.com/rivo/tview"
 )
 
-// Aplica estilos HTML al reporte de puertos
-func stylePortsOutput(portsData []byte) string {
+// StylePortsOutput aplica estilos HTML al reporte de puertos
+func StylePortsOutput(portsData []byte) string {
 	escapedPorts := html.EscapeString(string(portsData))
 
 	// Destacar protocolos (22/tcp, 53/udp, etc)
@@ -37,9 +37,9 @@ func stylePortsOutput(portsData []byte) string {
 	return escapedPorts
 }
 
-// Genera el contenido HTML del reporte
-func generateHTMLReport(state *AppState, hostIP, gateway, subnet string, hostsData, portsData []byte) string {
-	escapedPorts := stylePortsOutput(portsData)
+// GenerateHTMLReport genera el contenido HTML del reporte
+func GenerateHTMLReport(state *AppState, hostIP, gateway, subnet string, hostsData, portsData []byte) string {
+	escapedPorts := StylePortsOutput(portsData)
 
 	htmlContent := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
@@ -91,9 +91,9 @@ pre{
   <h2>Live Hosts</h2>
   <ul class="list">
 `, time.Now().Format("2006-01-02 15:04:05"),
-		html.EscapeString(getFirstLine(hostIP)),
+		html.EscapeString(GetFirstLine(hostIP)),
 		html.EscapeString(subnet),
-		html.EscapeString(getFirstLine(gateway)))
+		html.EscapeString(GetFirstLine(gateway)))
 
 	for _, line := range strings.Split(string(hostsData), "\n") {
 		line = strings.TrimSpace(line)
@@ -115,8 +115,8 @@ pre{
 	return htmlContent
 }
 
-// Muestra un popup con los resultados del escaneo
-func showCompletionPopup(state *AppState) {
+// ShowCompletionPopup muestra un popup con los resultados del escaneo
+func ShowCompletionPopup(state *AppState) {
 	state.app.QueueUpdateDraw(func() {
 		// Archivos relevantes del escaneo actual
 		var logFiles []string
