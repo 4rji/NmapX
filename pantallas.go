@@ -1,6 +1,6 @@
-// Package main implements a six-screen interactive TUI for building an nmap command dynamically.
+// Package main implements a six-screen interactive TUI for building and executing an nmap command.
 // Navigate with ←/→ arrows; selections persist and update the command and selected descriptions.
-// Layout: vertical split – left half for navigation and command, right half for selected descriptions.
+// Press 'x' to execute the assembled nmap command and view output in the Details pane.
 
 package main
 
@@ -17,8 +17,7 @@ func main() {
 	// Navigation helper
 	helper := tview.NewTextView()
 	helper.SetTextAlign(tview.AlignCenter)
-	helper.SetText("▶ Use ← and → arrows to navigate screens ◀")
-	helper.SetDynamicColors(true)
+	helper.SetText("◀ Use ←/→ to switch screens — press 'x' to execute nmap ▶")
 	helper.SetBorder(true)
 	helper.SetTitle("Navigation")
 	helper.SetTitleAlign(tview.AlignCenter)
@@ -58,7 +57,7 @@ func main() {
 		{"dns-brute", "--script=dns-brute", "Brute force DNS names."},
 	}
 
-	// Selection state slices
+	// Selection state
 	hostSel := make([]bool, len(hostOpts))
 	scanSel := make([]bool, len(scanOpts))
 	portSel := make([]bool, len(portOpts))
@@ -66,55 +65,54 @@ func main() {
 	evasionSel := make([]bool, len(evasionOpts))
 	scriptSel := make([]bool, len(scriptOpts))
 
-	// Command view (below helper in left pane)
+	// Command view (left pane top)
 	cmdView := tview.NewTextView().SetDynamicColors(true)
-	cmdView.SetBorder(true).
-		SetTitle("Command").
-		SetTitleAlign(tview.AlignLeft)
+	cmdView.SetBorder(true).SetTitle("Command").SetTitleAlign(tview.AlignLeft)
 
-	// Selected options description view (right pane)
+	// Selected options description (right pane top)
 	selDesc := tview.NewTextView().SetDynamicColors(true)
-	selDesc.SetBorder(true).
-		SetTitle("Selected Options").
-		SetTitleAlign(tview.AlignLeft)
+	selDesc.SetBorder(true).SetTitle("Selected Options").SetTitleAlign(tview.AlignLeft)
 
-	// updateCmd rebuilds the command and descriptions
+	// Details pane: command output (right pane bottom)
+	detailView := tview.NewTextView().SetDynamicColors(true)
+	detailView.SetBorder(true).SetTitle("Details").SetTitleAlign(tview.AlignLeft)
+
+	// updateCmd rebuilds command and selected descriptions
 	updateCmd := func() {
-		// Build command
-		cmd := "nmap"
-		appendFlags := func(opts []struct{ label, flag, desc string }, sel []bool) {
+		cmd := []string{"nmap"}
+		addFlags := func(opts []struct{ label, flag, desc string }, sel []bool) {
 			for i, s := range sel {
-				if s { cmd += " " + opts[i].flag }
+				if s { cmd = append(cmd, opts[i].flag) }
 			}
 		}
-		appendFlags(hostOpts, hostSel)
-		appendFlags(scanOpts, scanSel)
-		appendFlags(portOpts, portSel)
-		appendFlags(timeOpts, timeSel)
-		appendFlags(evasionOpts, evasionSel)
-		appendFlags(scriptOpts, scriptSel)
-		cmdView.SetText(cmd)
+		addFlags(hostOpts, hostSel)
+		addFlags(scanOpts, scanSel)
+		addFlags(portOpts, portSel)
+		addFlags(timeOpts, timeSel)
+		addFlags(evasionOpts, evasionSel)
+		addFlags(scriptOpts, scriptSel)
+		cmdView.SetText(strings.Join(cmd, " "))
 
-		// Build descriptions
+		// descriptions
 		var b strings.Builder
-		dump := func(opts []struct{ label, flag, desc string }, sel []bool) {
+		addDescs := func(opts []struct{ label, flag, desc string }, sel []bool) {
 			for i, s := range sel {
 				if s {
-					b.WriteString(fmt.Sprintf("%s (%s): %s\n", opts[i].label, opts[i].flag, opts[i].desc))
+					b.WriteString(fmt.Sprintf("%s %s: %s\n", opts[i].flag, opts[i].label, opts[i].desc))
 				}
 			}
 		}
-		dump(hostOpts, hostSel)
-		dump(scanOpts, scanSel)
-		dump(portOpts, portSel)
-		dump(timeOpts, timeSel)
-		dump(evasionOpts, evasionSel)
-		dump(scriptOpts, scriptSel)
+		addDescs(hostOpts, hostSel)
+		addDescs(scanOpts, scanSel)
+		addDescs(portOpts, portSel)
+		addDescs(timeOpts, timeSel)
+		addDescs(evasionOpts, evasionSel)
+		addDescs(scriptOpts, scriptSel)
 		selDesc.SetText(b.String())
 	}
 	updateCmd()
 
-	// Build interactive lists for each screen
+	// Build lists for screens
 	hostList := buildList("📡 Host Discovery", hostOpts, hostSel, updateCmd)
 	scanList := buildList("🔍 Scan Type", scanOpts, scanSel, updateCmd)
 	portList := buildList("📦 Port Selection", portOpts, portSel, updateCmd)
@@ -122,7 +120,7 @@ func main() {
 	evasionList := buildList("🛡 Evasion", evasionOpts, evasionSel, updateCmd)
 	scriptList := buildList("💻 NSE Scripts", scriptOpts, scriptSel, updateCmd)
 
-	// Pages holding each list
+	// Pages with lists (left pane middle)
 	pages := tview.NewPages().
 		AddPage("disc", hostList, true, true).
 		AddPage("scan", scanList, true, false).
@@ -131,28 +129,23 @@ func main() {
 		AddPage("evas", evasionList, true, false).
 		AddPage("script", scriptList, true, false)
 
-	// Navigation order and focusable lists
-	order := []string{"disc", "scan", "port", "time", "evas", "script"}
-	lists := []*tview.List{hostList, scanList, portList, timeList, evasionList, scriptList}
+	// Navigation order & focusable lists
+	order := []string{"disc","scan","port","time","evas","script"}
+	lists := []*tview.List{hostList,scanList,portList,timeList,evasionList,scriptList}
 	cur := 0
 
-	// Capture arrow keys to switch left-pane pages
+	// Arrow navigation + execute on 'x'
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		switch ev.Key() {
-		case tcell.KeyRight:
-			if cur < len(order)-1 {
-				cur++
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
-			}
-		case tcell.KeyLeft:
-			if cur > 0 {
-				cur--
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
-			}
-		}
-		return ev
+	if ev.Key() == tcell.KeyRight {
+		if cur < len(order)-1 { cur++; pages.SwitchToPage(order[cur]); app.SetFocus(lists[cur]) }
+	} else if ev.Key() == tcell.KeyLeft {
+		if cur > 0 { cur--; pages.SwitchToPage(order[cur]); app.SetFocus(lists[cur]) }
+	} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
+		// Show assembled nmap command in Details pane
+		cmdStr := cmdView.GetText(true)
+		detailView.SetText(cmdStr)
+	}
+	return ev
 	})
 
 	// Left pane: helper, command, pages
@@ -161,25 +154,26 @@ func main() {
 		AddItem(cmdView, 3, 0, false).
 		AddItem(pages, 0, 1, true)
 
-	// Right pane: descriptions
-	right := selDesc
+	// Right pane: two halves
+	right := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(selDesc, 0, 1, false).
+		AddItem(detailView, 0, 1, false)
 
-	// Main layout: two columns equally split
+	// Main layout: two columns equal width
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
 
-	// Run application
 	if err := app.SetRoot(mainFlex, true).Run(); err != nil {
 		panic(err)
 	}
 }
 
-// buildList constructs a toggleable List with options
+// buildList constructs a toggleable list
 func buildList(title string, opts []struct{ label, flag, desc string }, sel []bool, update func()) *tview.List {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(title).SetTitleAlign(tview.AlignLeft)
-	for i, opt := range opts {
+	for i,opt := range opts {
 		idx := i
 		list.AddItem(fmt.Sprintf("(%d) %s", i+1, opt.label), opt.desc, rune('1'+i), func() {
 			sel[idx] = !sel[idx]
