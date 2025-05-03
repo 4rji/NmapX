@@ -73,27 +73,12 @@ pre{
 .filtered { color: #ffc107; font-weight: bold; }
 .proto { color: #0dcaf0; font-weight: bold; }
 .svc { color: #6610f2; font-weight: bold; }
-.web-link {
-  display: inline-block;
-  background: #0d6efd;
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  text-decoration: none;
-  margin: 1rem 0;
-}
-.web-link:hover {
-  background: #0b5ed7;
-}
 </style>
 </head><body>
 
 <div class="banner">
   <h1>Network Scan Report (Test Mode)</h1>
   <small>Generated: %s</small>
-  <div style="margin-top: 1rem;">
-    <a href="http://localhost:8080" class="web-link" target="_blank">View Scan Files in Web Browser</a>
-  </div>
 </div>
 
 <div class="cards">
@@ -191,7 +176,7 @@ func showCompletionPopup(state *AppState) {
 		})
 
 		popup := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(tview.NewTextView().SetText("[green]Reporte finalizado![white]\nSolo se muestran los archivos de este escaneo.\n").SetDynamicColors(true), 3, 0, false).
+			AddItem(tview.NewTextView().SetText("[green]Reporte finalizado![white]\nSolo se muestran los archivos de este escaneo.\n[yellow]Servidor web: [white]http://localhost:8080\n").SetDynamicColors(true), 4, 0, false).
 			AddItem(list, 0, 1, true).
 			AddItem(okBtn, 3, 0, false)
 

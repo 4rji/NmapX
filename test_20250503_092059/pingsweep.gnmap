@@ -1,0 +1,2 @@
+# Nmap 7.95 scan initiated Sat May  3 09:20:59 2025 as: nmap -sn -oG test_20250503_092059/pingsweep.gnmap 192.168.143.0/24
+# Nmap done at Sat May  3 09:28:33 2025 -- 256 IP addresses (0 hosts up) scanned in 454.50 seconds
