@@ -143,6 +143,11 @@ func showCompletionPopup(state *AppState) {
 		}
 		list.SetBorder(true).SetTitle("Generated files").SetBackgroundColor(tcell.ColorDarkBlue)
 
+		// Create a text view for displaying file contents
+		contentView := tview.NewTextView()
+		contentView.SetBorder(true).SetTitle("File Contents").SetBackgroundColor(tcell.ColorDarkBlue)
+		contentView.SetScrollable(true)
+
 		// Open in browser on selection
 		list.SetSelectedFunc(func(ix int, mainText, secText string, shortcut rune) {
 			if ix == 0 {
@@ -158,22 +163,13 @@ func showCompletionPopup(state *AppState) {
 					cmd.Start()
 				}
 			} else if ix-1 < len(logFiles) {
-				// Opcional: copiar ruta al portapapeles
+				// Show file contents when Enter is pressed
 				path := logFiles[ix-1]
-				if runtime.GOOS == "darwin" {
-					cmd := exec.Command("pbcopy")
-					in, _ := cmd.StdinPipe()
-					cmd.Start()
-					in.Write([]byte(path))
-					in.Close()
-					cmd.Wait()
-				} else if runtime.GOOS == "linux" {
-					cmd := exec.Command("xclip", "-selection", "clipboard")
-					in, _ := cmd.StdinPipe()
-					cmd.Start()
-					in.Write([]byte(path))
-					in.Close()
-					cmd.Wait()
+				content, err := ioutil.ReadFile(path)
+				if err == nil {
+					contentView.SetText(string(content))
+				} else {
+					contentView.SetText(fmt.Sprintf("Error reading file: %v", err))
 				}
 			}
 		})
@@ -188,15 +184,22 @@ func showCompletionPopup(state *AppState) {
 			state.app.SetRoot(state.flex, true)
 		})
 
+		// Create a flex layout with list and content view side by side
+		mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(list, 0, 1, true).
+			AddItem(contentView, 0, 1, false)
+
 		popup := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewTextView().SetText("[green]Scan finished![white]\nOnly files from this scan are shown.\n[yellow]Web report: [white]http://localhost:8080/report.html\n").SetDynamicColors(true), 4, 0, false).
-			AddItem(list, 0, 1, true).
+			AddItem(mainFlex, 0, 1, true).
 			AddItem(exitBtn, 3, 0, false)
 
-		// Manejar Tab y Shift+Tab para cambiar el foco entre la lista y el botón Exit
+		// Handle Tab and Shift+Tab to switch focus between list, content view and exit button
 		popup.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
 				if state.app.GetFocus() == list {
+					state.app.SetFocus(contentView)
+				} else if state.app.GetFocus() == contentView {
 					state.app.SetFocus(exitBtn)
 				} else {
 					state.app.SetFocus(list)
@@ -205,14 +208,13 @@ func showCompletionPopup(state *AppState) {
 			}
 			if event.Key() == tcell.KeyBacktab {
 				if state.app.GetFocus() == exitBtn {
+					state.app.SetFocus(contentView)
+				} else if state.app.GetFocus() == contentView {
 					state.app.SetFocus(list)
 				} else {
 					state.app.SetFocus(exitBtn)
 				}
 				return nil
-			}
-			if event.Key() == tcell.KeyEsc {
-				os.Exit(0)
 			}
 			return event
 		})
