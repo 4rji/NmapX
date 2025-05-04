@@ -65,7 +65,7 @@ func setupUI() *AppState {
 	// Título fijo arriba
 	title := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignLeft)
 	title.SetBackgroundColor(tcell.ColorDarkBlue)
-	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Subnet: [white]" + state.target)
+	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Target: [white]" + state.target)
 
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 1, 0, false).

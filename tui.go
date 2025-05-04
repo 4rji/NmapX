@@ -1,48 +1,16 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// OpenAI API endpoint
-const apiURL = "https://api.openai.com/v1/chat/completions"
-
-// ---------- OpenAI payload types ----------
-
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type RequestBody struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-}
-
-type Choice struct {
-	Message Message `json:"message"`
-}
-
-type ResponseBody struct {
-	Choices []Choice `json:"choices"`
-}
-
-//-------------------------------------------
-
-func main() {
-	var runAfter bool   // flag to execute nmapx after TUI
-	var finalCmd string // command to run after exit
-
-	app := tview.NewApplication()
+// ShowNmapTUI displays the TUI interface for customizing Nmap commands
+func ShowNmapTUI(state *AppState) string {
+	app := state.app
 
 	// ========== Helper banner ===========
 	helper := tview.NewTextView()
@@ -187,6 +155,8 @@ func main() {
 	lists := []*tview.List{hostList, scanList, portList, timeList, evasList, nseList}
 	cur := 0
 
+	var finalCmd string
+
 	// input capture
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		switch {
@@ -199,9 +169,8 @@ func main() {
 			pages.SwitchToPage(order[cur])
 			app.SetFocus(lists[cur])
 		case ev.Key() == tcell.KeyRune && ev.Rune() == 'x':
-			explain(cmdView, detail)
+			Explain(cmdView, detail)
 		case ev.Key() == tcell.KeyRune && ev.Rune() == 'E':
-			runAfter = true
 			finalCmd = cmdView.GetText(true)
 			app.Stop()
 		}
@@ -221,57 +190,10 @@ func main() {
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
 
-	if err := app.SetRoot(root, true).Run(); err != nil {
+	app.SetRoot(root, true)
+	if err := app.Run(); err != nil {
 		panic(err)
 	}
 
-	if runAfter {
-		shellCmd := fmt.Sprintf("nmapx '%s'", finalCmd)
-		fmt.Printf("Executing: %s\n", shellCmd)
-		c := exec.Command("sh", "-c", shellCmd)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		_ = c.Run()
-	}
-}
-
-func explain(cmdView *tview.TextView, detail *tview.TextView) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		detail.SetText("OPENAI_API_KEY not set")
-		return
-	}
-
-	cmd := cmdView.GetText(true)
-	body := RequestBody{
-		Model: "gpt-4o-mini",
-		Messages: []Message{
-			{"system", "Explain briefly what this nmap command does."},
-			{"user", cmd},
-		},
-	}
-
-	data, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		detail.SetText(err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	var rb ResponseBody
-	if err := json.NewDecoder(resp.Body).Decode(&rb); err != nil {
-		detail.SetText(err.Error())
-		return
-	}
-
-	if len(rb.Choices) > 0 {
-		detail.SetText(rb.Choices[0].Message.Content)
-	} else {
-		detail.SetText("No response from API")
-	}
+	return finalCmd
 }

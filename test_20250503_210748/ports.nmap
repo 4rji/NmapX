@@ -1,0 +1,9 @@
+# Nmap 7.95 scan initiated Sat May  3 21:07:48 2025 as: nmap -iL test_20250503_210748/hosts.txt -oN test_20250503_210748/ports.nmap -Pn
+Nmap scan report for localhost (127.0.0.1)
+Host is up (0.000081s latency).
+Not shown: 998 closed tcp ports (reset)
+PORT     STATE SERVICE
+5000/tcp open  upnp
+7000/tcp open  afs3-fileserver
+
+# Nmap done at Sat May  3 21:07:48 2025 -- 1 IP address (1 host up) scanned in 0.02 seconds

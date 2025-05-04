@@ -130,23 +130,29 @@ func showCompletionPopup(state *AppState) {
 		}
 
 		list := tview.NewList().ShowSecondaryText(false)
-		list.AddItem("[Reporte HTML] "+state.htmlPath, "", 0, nil)
+		list.AddItem("[HTML Report] http://localhost:8080/report.html", "", 0, nil)
 		for _, r := range logFiles {
 			list.AddItem(r, "", 0, nil)
 		}
-		list.SetBorder(true).SetTitle("Archivos generados").SetBackgroundColor(tcell.ColorDarkBlue)
+		list.SetBorder(true).SetTitle("Generated files").SetBackgroundColor(tcell.ColorDarkBlue)
 
-		// Copiar al portapapeles al seleccionar
+		// Open in browser on selection
 		list.SetSelectedFunc(func(ix int, mainText, secText string, shortcut rune) {
-			var path string
 			if ix == 0 {
-				// Primer item es el HTML
-				path = state.htmlPath
+				// Open the HTML report in the browser
+				url := "http://localhost:8080/report.html"
+				var cmd *exec.Cmd
+				if runtime.GOOS == "darwin" {
+					cmd = exec.Command("open", url)
+				} else if runtime.GOOS == "linux" {
+					cmd = exec.Command("xdg-open", url)
+				}
+				if cmd != nil {
+					cmd.Start()
+				}
 			} else if ix-1 < len(logFiles) {
-				path = logFiles[ix-1]
-			}
-			if path != "" {
-				// Copiar al portapapeles según SO
+				// Opcional: copiar ruta al portapapeles
+				path := logFiles[ix-1]
 				if runtime.GOOS == "darwin" {
 					cmd := exec.Command("pbcopy")
 					in, _ := cmd.StdinPipe()
@@ -176,7 +182,7 @@ func showCompletionPopup(state *AppState) {
 		})
 
 		popup := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(tview.NewTextView().SetText("[green]Reporte finalizado![white]\nSolo se muestran los archivos de este escaneo.\n[yellow]Servidor web: [white]http://localhost:8080\n").SetDynamicColors(true), 4, 0, false).
+			AddItem(tview.NewTextView().SetText("[green]Scan finished![white]\nOnly files from this scan are shown.\n[yellow]Web report: [white]http://localhost:8080/report.html\n").SetDynamicColors(true), 4, 0, false).
 			AddItem(list, 0, 1, true).
 			AddItem(okBtn, 3, 0, false)
 

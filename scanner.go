@@ -59,9 +59,9 @@ func performHostDiscovery(state *AppState) {
 
 // Realiza el escaneo de puertos
 func performPortScan(state *AppState) {
-	fmt.Println("[2] Port scan (fast mode)")
-	err := runWithPrivileges("nmap", "-sS", "-sV", "-T4", "--top-ports", "1000", "-iL",
-		state.scanDir+"/hosts.txt", "-oN", state.scanDir+"/ports.nmap")
+	fmt.Println("[2] Port scan")
+	args := append([]string{"-iL", state.scanDir + "/hosts.txt", "-oN", state.scanDir + "/ports.nmap"}, state.selectedNmapArgs...)
+	err := runWithPrivileges("nmap", args...)
 	if err != nil {
 		fmt.Printf("Error during port scan: %v\n", err)
 		return
