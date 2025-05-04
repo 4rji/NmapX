@@ -44,10 +44,21 @@ func main() {
 
 	app := tview.NewApplication()
 
+	// Configurar estilos globales
+	tview.Styles.PrimitiveBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.ContrastBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.MoreContrastBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.BorderColor = tcell.ColorGreen
+	tview.Styles.TitleColor = tcell.ColorGreen
+	tview.Styles.GraphicsColor = tcell.ColorLightCyan
+	tview.Styles.PrimaryTextColor = tcell.ColorWhite
+	tview.Styles.SecondaryTextColor = tcell.ColorLightGrey
+
 	// ========== Helper banner ===========
 	helper := tview.NewTextView()
 	helper.SetTextAlign(tview.AlignCenter)
 	helper.SetBorder(true).SetTitle("Navigation")
+	helper.SetBackgroundColor(tcell.ColorDarkBlue)
 	helper.SetText("◀ ←/→ navigate | 'x' explain | 'E' run & exit ▶")
 
 	// ========== Option sets for 6 screens ==========
@@ -100,16 +111,19 @@ func main() {
 	cmdView.SetDynamicColors(true)
 	cmdView.SetBorder(true)
 	cmdView.SetTitle("Command")
+	cmdView.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	selDesc := tview.NewTextView()
 	selDesc.SetDynamicColors(true)
 	selDesc.SetBorder(true)
 	selDesc.SetTitle("Selected")
+	selDesc.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	detail := tview.NewTextView()
 	detail.SetDynamicColors(true)
 	detail.SetBorder(true)
 	detail.SetTitle("Details")
+	detail.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// -------- Update function --------
 	update := func() {
@@ -213,13 +227,18 @@ func main() {
 		AddItem(helper, 3, 0, false).
 		AddItem(cmdView, 3, 0, false).
 		AddItem(pages, 0, 1, true)
+	left.SetBackgroundColor(tcell.ColorDarkBlue)
+
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(selDesc, 0, 1, false).
 		AddItem(detail, 0, 1, false)
+	right.SetBackgroundColor(tcell.ColorDarkBlue)
+
 	root := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
+	root.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	if err := app.SetRoot(root, true).Run(); err != nil {
 		panic(err)
