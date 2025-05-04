@@ -77,14 +77,19 @@ pre{
 </head><body>
 
 <div class="banner">
-  <h1>Network Scan Report (Test Mode)</h1>
+  <h1>Network Scan Report</h1>
   <small>Generated: %s</small>
 </div>
 
 <div class="cards">
   <div class="card"><h3>Host IP</h3><p>%s</p></div>
-  <div class="card"><h3>Network</h3><p>%s</p></div>
+  <div class="card"><h3>Target</h3><p>%s</p></div>
   <div class="card"><h3>Default Gateway</h3><p>%s</p></div>
+</div>
+
+<div class="section">
+  <h2>Nmap Command</h2>
+  <pre>%s</pre>
 </div>
 
 <div class="section">
@@ -92,8 +97,9 @@ pre{
   <ul class="list">
 `, time.Now().Format("2006-01-02 15:04:05"),
 		html.EscapeString(getFirstLine(hostIP)),
-		html.EscapeString(subnet),
-		html.EscapeString(getFirstLine(gateway)))
+		html.EscapeString(state.target),
+		html.EscapeString(getFirstLine(gateway)),
+		html.EscapeString("nmap "+strings.Join(state.selectedNmapArgs, " ")))
 
 	for _, line := range strings.Split(string(hostsData), "\n") {
 		line = strings.TrimSpace(line)
@@ -171,11 +177,11 @@ func showCompletionPopup(state *AppState) {
 			}
 		})
 
-		okBtn := tview.NewButton("OK").SetSelectedFunc(func() {
+		exitBtn := tview.NewButton("Exit").SetSelectedFunc(func() {
 			state.app.SetRoot(state.flex, true)
 		})
-		okBtn.SetBackgroundColor(tcell.ColorGreen)
-		okBtn.SetLabelColor(tcell.ColorBlack)
+		exitBtn.SetBackgroundColor(tcell.ColorGreen)
+		exitBtn.SetLabelColor(tcell.ColorBlack)
 
 		list.SetDoneFunc(func() {
 			state.app.SetRoot(state.flex, true)
@@ -184,7 +190,7 @@ func showCompletionPopup(state *AppState) {
 		popup := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewTextView().SetText("[green]Scan finished![white]\nOnly files from this scan are shown.\n[yellow]Web report: [white]http://localhost:8080/report.html\n").SetDynamicColors(true), 4, 0, false).
 			AddItem(list, 0, 1, true).
-			AddItem(okBtn, 3, 0, false)
+			AddItem(exitBtn, 3, 0, false)
 
 		popup.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEsc {

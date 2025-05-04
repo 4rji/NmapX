@@ -12,6 +12,7 @@ type AppState struct {
 	tailPane          *tview.TextView
 	logPane           *tview.TextView
 	flex              *tview.Flex
+	title             *tview.TextView
 	target            string
 	scanDir           string
 	htmlPath          string
@@ -65,7 +66,8 @@ func setupUI() *AppState {
 	// Título fijo arriba
 	title := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignLeft)
 	title.SetBackgroundColor(tcell.ColorDarkBlue)
-	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Target: [white]" + state.target)
+	title.SetText("[green]4rji - nmapX    [white]|    [yellow]Command: [white]" + state.target)
+	state.title = title
 
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 1, 0, false).

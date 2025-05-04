@@ -30,6 +30,11 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Actualizar el título de la barra superior con el comando Nmap
+	if state.title != nil {
+		state.title.SetText("[green]4rji - nmapX    [white]|    [yellow]Command: [white]" + nmapCmd)
+	}
+
 	// Parsear el comando nmap
 	parts := strings.Fields(nmapCmd)
 	if len(parts) < 2 {
