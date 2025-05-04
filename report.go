@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -175,7 +174,7 @@ func showCompletionPopup(state *AppState) {
 		})
 
 		exitBtn := tview.NewButton("Exit").SetSelectedFunc(func() {
-			os.Exit(0)
+			state.app.Stop()
 		})
 		exitBtn.SetBackgroundColor(tcell.ColorGreen)
 		exitBtn.SetLabelColor(tcell.ColorBlack)
