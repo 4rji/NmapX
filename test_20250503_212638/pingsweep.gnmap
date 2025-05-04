@@ -1,3 +1,0 @@
-# Nmap 7.95 scan initiated Sat May  3 21:26:39 2025 as: nmap -sn -oG test_20250503_212638/pingsweep.gnmap localhost
-Host: 127.0.0.1 (localhost)	Status: Up
-# Nmap done at Sat May  3 21:26:39 2025 -- 1 IP address (1 host up) scanned in 0.01 seconds
