@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -178,7 +179,7 @@ func showCompletionPopup(state *AppState) {
 		})
 
 		exitBtn := tview.NewButton("Exit").SetSelectedFunc(func() {
-			state.app.SetRoot(state.flex, true)
+			os.Exit(0)
 		})
 		exitBtn.SetBackgroundColor(tcell.ColorGreen)
 		exitBtn.SetLabelColor(tcell.ColorBlack)
@@ -192,10 +193,26 @@ func showCompletionPopup(state *AppState) {
 			AddItem(list, 0, 1, true).
 			AddItem(exitBtn, 3, 0, false)
 
+		// Manejar Tab y Shift+Tab para cambiar el foco entre la lista y el botón Exit
 		popup.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			if event.Key() == tcell.KeyEsc {
-				state.app.SetRoot(state.flex, true)
+			if event.Key() == tcell.KeyTab {
+				if state.app.GetFocus() == list {
+					state.app.SetFocus(exitBtn)
+				} else {
+					state.app.SetFocus(list)
+				}
 				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				if state.app.GetFocus() == exitBtn {
+					state.app.SetFocus(list)
+				} else {
+					state.app.SetFocus(exitBtn)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyEsc {
+				os.Exit(0)
 			}
 			return event
 		})
