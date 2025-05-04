@@ -1,0 +1,296 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+// OpenAI API endpoint
+const apiURL = "https://api.openai.com/v1/chat/completions"
+
+// ---------- OpenAI payload types ----------
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type RequestBody struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+}
+
+type Choice struct {
+	Message Message `json:"message"`
+}
+
+type ResponseBody struct {
+	Choices []Choice `json:"choices"`
+}
+
+//-------------------------------------------
+
+func main() {
+	var runAfter bool   // flag to execute nmapx after TUI
+	var finalCmd string // command to run after exit
+
+	app := tview.NewApplication()
+
+	// Configurar estilos globales
+	tview.Styles.PrimitiveBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.ContrastBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.MoreContrastBackgroundColor = tcell.ColorDarkBlue
+	tview.Styles.BorderColor = tcell.ColorGreen
+	tview.Styles.TitleColor = tcell.ColorGreen
+	tview.Styles.GraphicsColor = tcell.ColorLightCyan
+	tview.Styles.PrimaryTextColor = tcell.ColorWhite
+	tview.Styles.SecondaryTextColor = tcell.ColorLightGrey
+
+	// ========== Helper banner ===========
+	helper := tview.NewTextView()
+	helper.SetTextAlign(tview.AlignCenter)
+	helper.SetBorder(true).SetTitle("Navigation")
+	helper.SetBackgroundColor(tcell.ColorDarkBlue)
+	helper.SetText("◀ ←/→ navigate | 'x' explain | 'E' run & exit ▶")
+
+	// ========== Option sets for 6 screens ==========
+	hostOpts := []struct{ label, flag, desc string }{
+		{"None", "-Pn", "Skip host discovery; assume hosts up"},
+		{"ICMP echo", "-PE", "ICMP echo ping"},
+		{"ICMP timestamp", "-PP", "ICMP timestamp ping"},
+		{"TCP SYN 80,443", "-PS80,443", "SYN ping to ports 80/443"},
+		{"UDP 53", "-PU53", "UDP ping to port 53"},
+	}
+	scanOpts := []struct{ label, flag, desc string }{
+		{"SYN", "-sS", "Stealth SYN scan"},
+		{"Connect", "-sT", "TCP connect scan"},
+		{"UDP", "-sU", "UDP scan"},
+		{"Version", "-sV", "Service/version detection"},
+		{"Aggressive", "-A", "OS, version, scripts, traceroute"},
+	}
+	portOpts := []struct{ label, flag, desc string }{
+		{"All ports", "-p-", "1-65535"},
+		{"Top 100", "--top-ports 100", "Top 100 common"},
+		{"Fast", "-F", "Fast limited"},
+		{"Custom 1-1024", "-p 1-1024", "Range 1-1024"},
+	}
+	timeOpts := []struct{ label, flag, desc string }{
+		{"Normal", "-T3", "Default timing"},
+		{"Aggressive", "-T4", "Faster"},
+		{"Insane", "-T5", "Very fast"},
+	}
+	evasionOpts := []struct{ label, flag, desc string }{
+		{"Fragment", "-f", "Fragment packets"},
+		{"Decoys", "-D RND:10", "Random decoy IPs"},
+		{"Spoof IP", "-S 1.2.3.4", "Fake source IP"},
+	}
+	scriptOpts := []struct{ label, flag, desc string }{
+		{"firewalk", "--script=firewalk", "Trace firewall rules"},
+		{"ssl‑ciphers", "--script=ssl-enum-ciphers", "Enumerate SSL ciphers"},
+		{"dns‑brute", "--script=dns-brute", "Brute‑force subdomains"},
+	}
+
+	// selection slices
+	hostSel := make([]bool, len(hostOpts))
+	scanSel := make([]bool, len(scanOpts))
+	portSel := make([]bool, len(portOpts))
+	timeSel := make([]bool, len(timeOpts))
+	evasionSel := make([]bool, len(evasionOpts))
+	scriptSel := make([]bool, len(scriptOpts))
+
+	// -------- Views --------
+	cmdView := tview.NewTextView()
+	cmdView.SetDynamicColors(true)
+	cmdView.SetBorder(true)
+	cmdView.SetTitle("Command")
+	cmdView.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	selDesc := tview.NewTextView()
+	selDesc.SetDynamicColors(true)
+	selDesc.SetBorder(true)
+	selDesc.SetTitle("Selected")
+	selDesc.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	detail := tview.NewTextView()
+	detail.SetDynamicColors(true)
+	detail.SetBorder(true)
+	detail.SetTitle("Details")
+	detail.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	// -------- Update function --------
+	update := func() {
+		parts := []string{"nmap"}
+		add := func(opts []struct{ label, flag, desc string }, sel []bool) {
+			for i, s := range sel {
+				if s {
+					parts = append(parts, opts[i].flag)
+				}
+			}
+		}
+		add(hostOpts, hostSel)
+		add(scanOpts, scanSel)
+		add(portOpts, portSel)
+		add(timeOpts, timeSel)
+		add(evasionOpts, evasionSel)
+		add(scriptOpts, scriptSel)
+		cmdView.SetText(strings.Join(parts, " "))
+
+		var b strings.Builder
+		dump := func(opts []struct{ label, flag, desc string }, sel []bool) {
+			for i, s := range sel {
+				if s {
+					fmt.Fprintf(&b, "%s (%s)\n", opts[i].label, opts[i].flag)
+				}
+			}
+		}
+		dump(hostOpts, hostSel)
+		dump(scanOpts, scanSel)
+		dump(portOpts, portSel)
+		dump(timeOpts, timeSel)
+		dump(evasionOpts, evasionSel)
+		dump(scriptOpts, scriptSel)
+		selDesc.SetText(b.String())
+	}
+	update()
+
+	// -------- List builder --------
+	makeList := func(title string, opts []struct{ label, flag, desc string }, sel []bool) *tview.List {
+		l := tview.NewList().ShowSecondaryText(true)
+		l.SetBorder(true).SetTitle(title)
+		for i, o := range opts {
+			idx := i
+			l.AddItem(fmt.Sprintf("(%d) %s", i+1, o.label), o.desc, rune('1'+i), func() {
+				sel[idx] = !sel[idx]
+				mark := o.label
+				if sel[idx] {
+					mark = "[*] " + o.label
+				}
+				l.SetItemText(idx, fmt.Sprintf("(%d) %s", i+1, mark), o.desc)
+				update()
+			})
+		}
+		return l
+	}
+
+	// create lists
+	hostList := makeList("📡 Host", hostOpts, hostSel)
+	scanList := makeList("🔍 Scan", scanOpts, scanSel)
+	portList := makeList("📦 Ports", portOpts, portSel)
+	timeList := makeList("⏱ Timing", timeOpts, timeSel)
+	evasList := makeList("🛡 Evasion", evasionOpts, evasionSel)
+	nseList := makeList("💻 NSE", scriptOpts, scriptSel)
+
+	// pages
+	pages := tview.NewPages().
+		AddPage("host", hostList, true, true).
+		AddPage("scan", scanList, true, false).
+		AddPage("port", portList, true, false).
+		AddPage("time", timeList, true, false).
+		AddPage("evas", evasList, true, false).
+		AddPage("nse", nseList, true, false)
+
+	order := []string{"host", "scan", "port", "time", "evas", "nse"}
+	lists := []*tview.List{hostList, scanList, portList, timeList, evasList, nseList}
+	cur := 0
+
+	// input capture
+	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		switch {
+		case ev.Key() == tcell.KeyRight && cur < len(order)-1:
+			cur++
+			pages.SwitchToPage(order[cur])
+			app.SetFocus(lists[cur])
+		case ev.Key() == tcell.KeyLeft && cur > 0:
+			cur--
+			pages.SwitchToPage(order[cur])
+			app.SetFocus(lists[cur])
+		case ev.Key() == tcell.KeyRune && ev.Rune() == 'x':
+			explain(cmdView, detail)
+		case ev.Key() == tcell.KeyRune && ev.Rune() == 'E':
+			runAfter = true
+			finalCmd = cmdView.GetText(true)
+			app.Stop()
+		}
+		return ev
+	})
+
+	// layout
+	left := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(helper, 3, 0, false).
+		AddItem(cmdView, 3, 0, false).
+		AddItem(pages, 0, 1, true)
+	left.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	right := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(selDesc, 0, 1, false).
+		AddItem(detail, 0, 1, false)
+	right.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	root := tview.NewFlex().
+		SetDirection(tview.FlexColumn).
+		AddItem(left, 0, 1, true).
+		AddItem(right, 0, 1, false)
+	root.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	if err := app.SetRoot(root, true).Run(); err != nil {
+		panic(err)
+	}
+
+	if runAfter {
+		shellCmd := fmt.Sprintf("nmapx '%s'", finalCmd)
+		fmt.Printf("Executing: %s\n", shellCmd)
+		c := exec.Command("sh", "-c", shellCmd)
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		_ = c.Run()
+	}
+}
+
+func explain(cmdView *tview.TextView, detail *tview.TextView) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		detail.SetText("OPENAI_API_KEY not set")
+		return
+	}
+
+	cmd := cmdView.GetText(true)
+	body := RequestBody{
+		Model: "gpt-4o-mini",
+		Messages: []Message{
+			{"system", "Explain briefly what this nmap command does."},
+			{"user", cmd},
+		},
+	}
+
+	data, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		detail.SetText(err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	var rb ResponseBody
+	if err := json.NewDecoder(resp.Body).Decode(&rb); err != nil {
+		detail.SetText(err.Error())
+		return
+	}
+
+	if len(rb.Choices) > 0 {
+		detail.SetText(rb.Choices[0].Message.Content)
+	} else {
+		detail.SetText("No response from API")
+	}
+}

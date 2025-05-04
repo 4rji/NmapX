@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -37,8 +39,26 @@ type ResponseBody struct {
 	Choices []Choice `json:"choices"`
 }
 
+// Variable global para el comando limpio
+var lastCmdStr string
+
 func main() {
 	app := tview.NewApplication()
+
+	// Declarar vistas principales al inicio para que estén disponibles en todo el scope
+	cmdView := tview.NewTextView().SetDynamicColors(true)
+	selDesc := tview.NewTextView().SetDynamicColors(true)
+	detailView := tview.NewTextView().SetDynamicColors(true)
+
+	cmdView.SetBorder(true).SetTitle("Command").SetTitleAlign(tview.AlignLeft)
+	cmdView.SetBackgroundColor(tcell.ColorDarkBlue)
+	cmdView.SetWrap(false)
+
+	selDesc.SetBorder(true).SetTitle("Selected Options").SetTitleAlign(tview.AlignLeft)
+	selDesc.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	detailView.SetBorder(true).SetTitle("Explanation").SetTitleAlign(tview.AlignLeft)
+	detailView.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// Configurar estilos globales
 	tview.Styles.PrimitiveBackgroundColor = tcell.ColorDarkBlue
@@ -102,20 +122,23 @@ func main() {
 	evasionSel := make([]bool, len(evasionOpts))
 	scriptSel := make([]bool, len(scriptOpts))
 
-	// Command view (left pane top)
-	cmdView := tview.NewTextView().SetDynamicColors(true)
-	cmdView.SetBorder(true).SetTitle("Command").SetTitleAlign(tview.AlignLeft)
-	cmdView.SetBackgroundColor(tcell.ColorDarkBlue)
-
-	// Selected options description (right pane top)
-	selDesc := tview.NewTextView().SetDynamicColors(true)
-	selDesc.SetBorder(true).SetTitle("Selected Options").SetTitleAlign(tview.AlignLeft)
-	selDesc.SetBackgroundColor(tcell.ColorDarkBlue)
-
-	// Details pane: command output (right pane bottom)
-	detailView := tview.NewTextView().SetDynamicColors(true)
-	detailView.SetBorder(true).SetTitle("Explanation").SetTitleAlign(tview.AlignLeft)
-	detailView.SetBackgroundColor(tcell.ColorDarkBlue)
+	// Botón Copy (modificado para copiar solo el comando limpio)
+	copyBtn := tview.NewButton("Copy").SetSelectedFunc(func() {
+		err := copyToClipboard(lastCmdStr)
+		if err == nil {
+			cmdView.SetTitle("Command (Copied!)")
+		} else {
+			cmdView.SetTitle("Command (Copy failed)")
+		}
+		go func() {
+			time.Sleep(1 * time.Second)
+			app.QueueUpdateDraw(func() {
+				cmdView.SetTitle("Command")
+			})
+		}()
+	})
+	copyBtn.SetBorder(true)
+	copyBtn.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	// updateCmd rebuilds command and selected descriptions
 	updateCmd := func() {
@@ -133,7 +156,11 @@ func main() {
 		addFlags(timeOpts, timeSel)
 		addFlags(evasionOpts, evasionSel)
 		addFlags(scriptOpts, scriptSel)
-		cmdView.SetText(strings.Join(cmd, " "))
+		cmdStr := strings.Join(cmd, " ")
+		lastCmdStr = cmdStr // Guardar el comando limpio para copiar
+		// Simular grosor: repetir y rodear con ▓
+		decorated := fmt.Sprintf("▓ %s ▓\n▓ %s ▓", cmdStr, cmdStr)
+		cmdView.SetText(decorated)
 
 		// descriptions
 		var b strings.Builder
@@ -176,48 +203,63 @@ func main() {
 	lists := []*tview.List{hostList, scanList, portList, timeList, evasionList, scriptList}
 	cur := 0
 
-	// Arrow navigation + execute on 'x'
+	// Variable para alternar el foco
+	focusOnCmdBar := false
+
+	// Arrow navigation + execute on 'x' + Tab para cambiar foco
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyRight {
-			if cur < len(order)-1 {
-				cur++
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
-			}
-		} else if ev.Key() == tcell.KeyLeft {
-			if cur > 0 {
-				cur--
-				pages.SwitchToPage(order[cur])
-				app.SetFocus(lists[cur])
-			}
-		} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
-			// Explain assembled nmap command via OpenAI
-			apiKey := os.Getenv("OPENAI_API_KEY")
-			if apiKey == "" {
-				detailView.SetText("Error: OPENAI_API_KEY not set")
+		if ev.Key() == tcell.KeyTAB {
+			if !focusOnCmdBar {
+				app.SetFocus(copyBtn)
+				focusOnCmdBar = true
 			} else {
-				cmdStr := cmdView.GetText(true)
-				// Build chat messages
-				msgs := []Message{
-					{Role: "system", Content: "Explain briefly in a few words what this nmap command does."},
-					{Role: "user", Content: cmdStr},
+				app.SetFocus(lists[cur])
+				focusOnCmdBar = false
+			}
+			return nil // Consumir el evento
+		}
+		if !focusOnCmdBar {
+			if ev.Key() == tcell.KeyRight {
+				if cur < len(order)-1 {
+					cur++
+					pages.SwitchToPage(order[cur])
+					app.SetFocus(lists[cur])
 				}
-				reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
-				data, _ := json.Marshal(reqBody)
-				req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
-				req.Header.Set("Authorization", "Bearer "+apiKey)
-				req.Header.Set("Content-Type", "application/json")
-				resp, err := http.DefaultClient.Do(req)
-				if err != nil {
-					detailView.SetText(fmt.Sprintf("Request error: %v", err))
+			} else if ev.Key() == tcell.KeyLeft {
+				if cur > 0 {
+					cur--
+					pages.SwitchToPage(order[cur])
+					app.SetFocus(lists[cur])
+				}
+			} else if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' {
+				// Explain assembled nmap command via OpenAI
+				apiKey := os.Getenv("OPENAI_API_KEY")
+				if apiKey == "" {
+					detailView.SetText("Error: OPENAI_API_KEY not set")
 				} else {
-					defer resp.Body.Close()
-					var rBody ResponseBody
-					json.NewDecoder(resp.Body).Decode(&rBody)
-					if len(rBody.Choices) > 0 {
-						detailView.SetText(rBody.Choices[0].Message.Content)
+					cmdStr := cmdView.GetText(true)
+					// Build chat messages
+					msgs := []Message{
+						{Role: "system", Content: "Summarize what this nmap command does in a security context. Be brief and skip any mention that it's an nmap command. Don't explain individual flags. Just describe the overall action and intent. Check if the command is valid or has conflicting options. If it's invalid, suggest a corrected version."},
+						{Role: "user", Content: cmdStr},
+					}
+					reqBody := RequestBody{Model: "gpt-4o-mini", Messages: msgs}
+					data, _ := json.Marshal(reqBody)
+					req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
+					req.Header.Set("Authorization", "Bearer "+apiKey)
+					req.Header.Set("Content-Type", "application/json")
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						detailView.SetText(fmt.Sprintf("Request error: %v", err))
 					} else {
-						detailView.SetText("No explanation received.")
+						defer resp.Body.Close()
+						var rBody ResponseBody
+						json.NewDecoder(resp.Body).Decode(&rBody)
+						if len(rBody.Choices) > 0 {
+							detailView.SetText(rBody.Choices[0].Message.Content)
+						} else {
+							detailView.SetText("No explanation received.")
+						}
 					}
 				}
 			}
@@ -225,26 +267,37 @@ func main() {
 		return ev
 	})
 
-	// Left pane: helper, command, pages
+	// Left pane: helper, pages (ya no incluye cmdView)
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helper, 3, 0, false).
-		AddItem(cmdView, 3, 0, false).
 		AddItem(pages, 0, 1, true)
 	left.SetBackgroundColor(tcell.ColorDarkBlue)
 
-	// Right pane: two halves
+	// Right pane: dos mitades, pero ahora Explanation (detailView) es 20% más alto
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(selDesc, 0, 1, false).
-		AddItem(detailView, 0, 1, false)
+		AddItem(selDesc, 0, 4, false).
+		AddItem(detailView, 0, 8, false)
 	right.SetBackgroundColor(tcell.ColorDarkBlue)
 
-	// Main layout: two columns equal width
-	mainFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+	// Main layout: dos columnas arriba, barra de comando abajo
+	mainBody := tview.NewFlex().SetDirection(tview.FlexColumn).
 		AddItem(left, 0, 1, true).
 		AddItem(right, 0, 1, false)
-	mainFlex.SetBackgroundColor(tcell.ColorDarkBlue)
+	mainBody.SetBackgroundColor(tcell.ColorDarkBlue)
 
-	if err := app.SetRoot(mainFlex, true).Run(); err != nil {
+	// Barra inferior: comando + botón Copy
+	cmdBar := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(cmdView, 0, 5, false).
+		AddItem(copyBtn, 12, 0, false)
+	cmdBar.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	// Layout final: todo el body arriba, barra de comando abajo
+	rootFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(mainBody, 0, 1, true).
+		AddItem(cmdBar, 3, 0, false)
+	rootFlex.SetBackgroundColor(tcell.ColorDarkBlue)
+
+	if err := app.SetRoot(rootFlex, true).Run(); err != nil {
 		panic(err)
 	}
 }
@@ -266,4 +319,35 @@ func buildList(title string, opts []struct{ label, flag, desc string }, sel []bo
 		})
 	}
 	return list
+}
+
+// copyToClipboard copia el texto al portapapeles en Mac y Linux
+func copyToClipboard(text string) error {
+	// Intentar pbcopy (Mac)
+	cmd := "pbcopy"
+	if _, err := os.Stat("/usr/bin/pbcopy"); err == nil {
+		c := execCommand(cmd)
+		c.Stdin = strings.NewReader(text)
+		return c.Run()
+	}
+	// Intentar xclip (Linux)
+	cmd = "xclip"
+	if _, err := os.Stat("/usr/bin/xclip"); err == nil {
+		c := execCommand(cmd, "-selection", "clipboard")
+		c.Stdin = strings.NewReader(text)
+		return c.Run()
+	}
+	// Intentar xsel (Linux)
+	cmd = "xsel"
+	if _, err := os.Stat("/usr/bin/xsel"); err == nil {
+		c := execCommand(cmd, "--clipboard", "--input")
+		c.Stdin = strings.NewReader(text)
+		return c.Run()
+	}
+	return fmt.Errorf("No clipboard utility found (pbcopy, xclip, xsel)")
+}
+
+// execCommand es un wrapper para exec.Command
+func execCommand(name string, arg ...string) *exec.Cmd {
+	return exec.Command(name, arg...)
 }
