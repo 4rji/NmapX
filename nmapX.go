@@ -39,6 +39,33 @@ type ResponseBody struct {
 
 //-------------------------------------------
 
+type CustomCmd struct {
+	Name string
+	Cmd  string
+}
+
+func loadCustomCommands(path string) ([]CustomCmd, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cmds []CustomCmd
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "::", 2)
+		if len(parts) == 2 {
+			cmds = append(cmds, CustomCmd{
+				Name: parts[0],
+				Cmd:  parts[1],
+			})
+		}
+	}
+	return cmds, nil
+}
+
 func main() {
 	var runAfter bool   // flag to execute nmapx after TUI
 	var finalCmd string // command to run after exit
@@ -47,6 +74,12 @@ func main() {
 	target := "localhost" // default target
 	if len(os.Args) > 1 {
 		target = os.Args[1]
+	}
+
+	// Cargar comandos personalizados
+	customCmds, err := loadCustomCommands("/opt/4rji/bin/nmap-commands")
+	if err != nil {
+		customCmds = []CustomCmd{{Name: "No custom commands found", Cmd: ""}}
 	}
 
 	app := tview.NewApplication()
@@ -194,9 +227,6 @@ func main() {
 	}
 	update()
 
-	// Variable para alternar el foco
-	focusOnCmdBar := false
-
 	// -------- List builder --------
 	makeList := func(title string, opts []struct{ label, flag, desc string }, sel []bool) *tview.List {
 		l := tview.NewList().ShowSecondaryText(true)
@@ -224,6 +254,26 @@ func main() {
 	evasList := makeList("   🛡 Evasion   ", evasionOpts, evasionSel)
 	nseList := makeList("   💻 NSE   ", scriptOpts, scriptSel)
 
+	// Lista de comandos personalizados
+	customList := tview.NewList().ShowSecondaryText(true)
+	customList.SetBorder(true).SetTitle("Custom Commands")
+	customList.SetBorderColor(tcell.ColorGreen)
+	customList.SetFocusFunc(func() {
+		customList.SetBorderColor(tcell.ColorRed)
+	})
+	customList.SetBlurFunc(func() {
+		customList.SetBorderColor(tcell.ColorGreen)
+	})
+	for _, c := range customCmds {
+		c := c // captura para el closure
+		customList.AddItem(c.Name, c.Cmd, 0, func() {
+			customCmd := strings.ReplaceAll(c.Cmd, "{target}", target)
+			lastCmdStr = customCmd
+			decorated := fmt.Sprintf("▓ %s ▓\n▓ %s ▓", customCmd, customCmd)
+			cmdView.SetText(decorated)
+		})
+	}
+
 	// pages
 	pages := tview.NewPages().
 		AddPage("host", hostList, true, true).
@@ -233,34 +283,38 @@ func main() {
 		AddPage("evas", evasList, true, false).
 		AddPage("nse", nseList, true, false)
 
-	order := []string{"host", "scan", "port", "time", "evas", "nse"}
-	lists := []*tview.List{hostList, scanList, portList, timeList, evasList, nseList}
-	cur := 0
+	order := []string{"host", "scan", "port", "time", "evas", "nse", "custom"}
+	tabOrder := []tview.Primitive{hostList, scanList, portList, timeList, evasList, nseList, customList, copyBtn}
+	tabIndex := 0
 
-	// input capture mejorado: Tab cambia entre UI principal y barra de comando
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		if ev.Key() == tcell.KeyTAB {
-			if !focusOnCmdBar {
-				app.SetFocus(copyBtn)
-				focusOnCmdBar = true
-			} else {
-				app.SetFocus(lists[cur])
-				focusOnCmdBar = false
-			}
+			tabIndex = (tabIndex + 1) % len(tabOrder)
+			app.SetFocus(tabOrder[tabIndex])
 			return nil
 		}
-		switch {
-		case ev.Key() == tcell.KeyRight && cur < len(order)-1 && !focusOnCmdBar:
-			cur++
-			pages.SwitchToPage(order[cur])
-			app.SetFocus(lists[cur])
-		case ev.Key() == tcell.KeyLeft && cur > 0 && !focusOnCmdBar:
-			cur--
-			pages.SwitchToPage(order[cur])
-			app.SetFocus(lists[cur])
-		case ev.Key() == tcell.KeyRune && ev.Rune() == 'x' && !focusOnCmdBar:
+		// Solo cambiar página si el foco está en una de las 6 listas principales
+		for i, l := range tabOrder[:6] {
+			if app.GetFocus() == l {
+				if ev.Key() == tcell.KeyRight && i < 5 {
+					app.SetFocus(tabOrder[i+1])
+					pages.SwitchToPage(order[i+1])
+					tabIndex = i + 1
+					return nil
+				}
+				if ev.Key() == tcell.KeyLeft && i > 0 {
+					app.SetFocus(tabOrder[i-1])
+					pages.SwitchToPage(order[i-1])
+					tabIndex = i - 1
+					return nil
+				}
+			}
+		}
+		// Acciones especiales
+		if ev.Key() == tcell.KeyRune && ev.Rune() == 'x' && app.GetFocus() != copyBtn {
 			explain(cmdView, detail)
-		case ev.Key() == tcell.KeyRune && ev.Rune() == 'E' && !focusOnCmdBar:
+		}
+		if ev.Key() == tcell.KeyRune && ev.Rune() == 'E' && app.GetFocus() != copyBtn {
 			runAfter = true
 			finalCmd = lastCmdStr
 			app.Stop()
@@ -271,7 +325,8 @@ func main() {
 	// layout principal: body arriba, barra de comando abajo
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helper, 3, 0, false).
-		AddItem(pages, 0, 1, true)
+		AddItem(pages, 0, 7, true).
+		AddItem(customList, 0, 3, false)
 	left.SetBackgroundColor(tcell.ColorDarkBlue)
 
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
