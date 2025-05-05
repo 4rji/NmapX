@@ -256,7 +256,7 @@ func main() {
 
 	// Lista de comandos personalizados
 	customList := tview.NewList().ShowSecondaryText(true)
-	customList.SetBorder(true).SetTitle("Custom Commands")
+	customList.SetBorder(true).SetTitle("Custom Commands /opt/4rji/bin/nmap-commands")
 	customList.SetBorderColor(tcell.ColorGreen)
 	customList.SetFocusFunc(func() {
 		customList.SetBorderColor(tcell.ColorRed)
