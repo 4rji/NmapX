@@ -79,7 +79,7 @@ func main() {
 	// Cargar comandos personalizados
 	customCmds, err := loadCustomCommands("/opt/4rji/bin/nmap-commands")
 	if err != nil {
-		customCmds = []CustomCmd{{Name: "No custom commands found", Cmd: ""}}
+		customCmds = []CustomCmd{{Name: "No custom commands found - add it to /opt/4rji/bin/nmap-commands", Cmd: ""}}
 	}
 
 	app := tview.NewApplication()
