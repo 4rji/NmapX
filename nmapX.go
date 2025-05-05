@@ -185,6 +185,13 @@ func main() {
 	})
 	copyBtn.SetBorder(true)
 	copyBtn.SetBackgroundColor(tcell.ColorDarkBlue)
+	copyBtn.SetBorderColor(tcell.ColorGreen)
+	copyBtn.SetFocusFunc(func() {
+		copyBtn.SetBorderColor(tcell.ColorYellow)
+	})
+	copyBtn.SetBlurFunc(func() {
+		copyBtn.SetBorderColor(tcell.ColorGreen)
+	})
 
 	// -------- Update function --------
 	update := func() {
@@ -231,6 +238,13 @@ func main() {
 	makeList := func(title string, opts []struct{ label, flag, desc string }, sel []bool) *tview.List {
 		l := tview.NewList().ShowSecondaryText(true)
 		l.SetBorder(true).SetTitle(title)
+		l.SetBorderColor(tcell.ColorGreen)
+		l.SetFocusFunc(func() {
+			l.SetBorderColor(tcell.ColorYellow)
+		})
+		l.SetBlurFunc(func() {
+			l.SetBorderColor(tcell.ColorGreen)
+		})
 		for i, o := range opts {
 			idx := i
 			l.AddItem(fmt.Sprintf("(%d) %s", i+1, o.label), o.desc, rune('1'+i), func() {
@@ -259,7 +273,7 @@ func main() {
 	customList.SetBorder(true).SetTitle("Custom Commands /opt/4rji/bin/nmap-commands")
 	customList.SetBorderColor(tcell.ColorGreen)
 	customList.SetFocusFunc(func() {
-		customList.SetBorderColor(tcell.ColorRed)
+		customList.SetBorderColor(tcell.ColorYellow)
 	})
 	customList.SetBlurFunc(func() {
 		customList.SetBorderColor(tcell.ColorGreen)
@@ -285,12 +299,19 @@ func main() {
 
 	order := []string{"host", "scan", "port", "time", "evas", "nse", "custom"}
 	tabOrder := []tview.Primitive{hostList, scanList, portList, timeList, evasList, nseList, customList, copyBtn}
-	tabIndex := 0
 
 	app.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyTAB {
-			tabIndex = (tabIndex + 1) % len(tabOrder)
-			app.SetFocus(tabOrder[tabIndex])
+		// ----- Tab navigation -----
+		if ev.Key() == tcell.KeyTab || (ev.Key() == tcell.KeyRune && ev.Rune() == '\t') {
+			switch app.GetFocus() {
+			case hostList, scanList, portList, timeList, evasList, nseList:
+				app.SetFocus(customList)
+			case customList:
+				app.SetFocus(copyBtn)
+			default:
+				app.SetFocus(hostList)
+				pages.SwitchToPage("host")
+			}
 			return nil
 		}
 		// Solo cambiar página si el foco está en una de las 6 listas principales
@@ -299,13 +320,11 @@ func main() {
 				if ev.Key() == tcell.KeyRight && i < 5 {
 					app.SetFocus(tabOrder[i+1])
 					pages.SwitchToPage(order[i+1])
-					tabIndex = i + 1
 					return nil
 				}
 				if ev.Key() == tcell.KeyLeft && i > 0 {
 					app.SetFocus(tabOrder[i-1])
 					pages.SwitchToPage(order[i-1])
-					tabIndex = i - 1
 					return nil
 				}
 			}
