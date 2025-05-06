@@ -1,3 +1,43 @@
+# NmapX - Interactive Nmap Scanner
+
+NmapX is an interactive command-line tool that provides a user-friendly interface for running Nmap scans with various options and features.
+
+## Quick Start
+
+You can run NmapX in two ways:
+
+```sh
+# Basic usage
+go run nmapX.go
+
+# With target specification
+go run nmapX.go IP/subnet
+```
+
+## Interactive Menu Navigation
+
+### Main Navigation
+![Main Menu](img/1.png)
+
+- Use **left and right arrow keys** to navigate between different scan options
+- Press **Tab** to switch to the "Custom commands" section
+
+### Custom Commands
+![Custom Commands](img/2.png)
+
+- Save and manage frequently used commands
+- Press **X** to get AI-powered explanations of commands using ChatGPT API
+
+### Command Copy
+![Command Copy](img/3.png)
+
+- Press **Tab** again to access the command copy feature
+
+### Command Execution
+![Command Execution](img/4.png)
+
+- Use **Shift + E** to execute the selected command directly
+
 **Install Go dependencies:**
    ```sh
    go mod tidy
